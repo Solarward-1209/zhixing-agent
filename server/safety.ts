@@ -37,7 +37,7 @@ export function screenInput(text: string): SafetyCheck {
 
 /** 输出侧兜底：涉及专业建议时追加免责声明 */
 export function applyDisclaimer(text: string): string {
-  const needs = /(医疗|诊断|用药|处方|法律|律师|起诉|投资|理财|股票|基金)/;
+  const needs = /(医疗|诊断|药|处方|法律|律师|起诉|投资|理财|股票|基金)/;
   if (needs.test(text)) {
     return (
       text +
