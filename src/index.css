@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+}
+
+/* 细滚动条 */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-700;
+}
+*::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-600;
+}
+
+/* Markdown 正文样式（配合 react-markdown 输出） */
+.md-body {
+  @apply text-[15px] leading-7;
+}
+.md-body > *:first-child {
+  margin-top: 0;
+}
+.md-body > *:last-child {
+  margin-bottom: 0;
+}
+.md-body p {
+  @apply my-2.5;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3 {
+  @apply mt-5 mb-2 font-semibold text-slate-50;
+}
+.md-body h1 {
+  @apply text-lg;
+}
+.md-body h2 {
+  @apply text-base;
+}
+.md-body ul {
+  @apply my-2.5 list-disc space-y-1 pl-5;
+}
+.md-body ol {
+  @apply my-2.5 list-decimal space-y-1 pl-5;
+}
+.md-body strong {
+  @apply font-semibold text-white;
+}
+.md-body a {
+  @apply text-cyan-300 underline underline-offset-2;
+}
+.md-body blockquote {
+  @apply my-2.5 rounded-r-md border-l-4 border-amber-400/70 bg-amber-400/10 py-1.5 pr-3 pl-3 text-[13px] text-amber-100/90;
+}
+.md-body code {
+  @apply rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[13px] text-cyan-200;
+}
+.md-body pre {
+  @apply my-2.5 overflow-x-auto rounded-lg bg-slate-900 p-3;
+}
+.md-body pre code {
+  @apply bg-transparent p-0;
+}
+.md-body table {
+  @apply my-2.5 w-full border-collapse text-[13px];
+}
+.md-body th,
+.md-body td {
+  @apply border border-slate-700 px-2.5 py-1.5 text-left;
+}
+.md-body th {
+  @apply bg-slate-800 font-medium;
+}
+.md-body hr {
+  @apply my-4 border-slate-700/70;
+}
+
+/* 流式输出光标 */
+.stream-cursor {
+  @apply ml-0.5 inline-block h-4 w-[3px] translate-y-0.5 animate-blink rounded-sm bg-cyan-300;
+}
