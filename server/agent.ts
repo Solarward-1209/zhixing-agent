@@ -1,7 +1,7 @@
 import type { AgentEvent } from "../shared/protocol";
 import { getLlmConfig, chatCompletion, chatCompletionStream, type LlmMessage, type ToolCallRequest } from "./llm";
 import { toolSchemas, executeTool } from "./tools";
-import { retrieve, toSources, buildKbContext } from "./rag";
+import { retrieve, toSources, buildKbContext, isRelevant } from "./rag";
 import { screenInput, FALLBACK_REPLY } from "./safety";
 import { runDemoAgent } from "./demo";
 
@@ -76,11 +76,11 @@ export async function runAgent(userText: string, history: HistoryTurn[], emit: E
     emit({ type: "status", stage: "retrieving" });
     emit({ type: "step_update", index: 0, status: "done" });
     emit({ type: "step_update", index: 1, status: "running" });
-    const hits = retrieve(userText, 3);
+    const hits = await retrieve(userText, 3);
     const sources = toSources(hits);
     const kbContext = buildKbContext(hits);
 
-    if (hits.length > 0 && hits[0].score > 0.06) {
+    if (isRelevant(userText, hits)) {
       emit({ type: "tool_call", callId: "kb-auto", name: "query_knowledge_base", args: { query: userText, topK: 3 } });
       emit({
         type: "tool_result",

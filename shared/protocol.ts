@@ -55,4 +55,6 @@ export interface HealthInfo {
   mode: "demo" | "ai";
   provider?: string;
   model?: string;
+  /** 检索模式：bm25（本地）或 bm25+vector（配置了 Embedding Key 的混合检索） */
+  retrieval?: "bm25" | "bm25+vector";
 }

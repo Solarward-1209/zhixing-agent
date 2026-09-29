@@ -1,33 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { retrieve, toSources } from "../server/rag";
+import { isRelevant, retrieve, retrievalMode, toSources } from "../server/rag";
 
-describe("知识库检索（RAG）", () => {
-  it("组别问题召回组别规则文档", () => {
-    const r = retrieve("B组学生可以报名什么组别？", 3);
+describe("知识库混合检索（BM25 + 可插拔向量）", () => {
+  it("组别问题召回组别规则文档", async () => {
+    const r = await retrieve("B组学生可以报名什么组别？", 3);
     expect(r.length).toBeGreaterThan(0);
     expect(r[0].chunk.id).toBe("kb-003");
   });
 
-  it("评分问题召回评审标准文档", () => {
-    const r = retrieve("AI技术深度的评分细则是怎样的？", 3);
+  it("评分问题召回评审标准文档", async () => {
+    const r = await retrieve("AI技术深度的评分细则是怎样的？", 3);
     expect(["kb-007", "kb-008"]).toContain(r[0].chunk.id);
   });
 
-  it("提交材料问题召回提交要求文档", () => {
-    const r = retrieve("作品提交需要准备哪些材料？", 2);
+  it("提交材料问题召回提交要求文档", async () => {
+    const r = await retrieve("作品提交需要准备哪些材料？", 2);
     expect(["kb-005", "kb-006"]).toContain(r[0].chunk.id);
   });
 
-  it("topK 限制返回数量", () => {
-    expect(retrieve("报名时间", 1).length).toBe(1);
+  it("topK 限制返回数量", async () => {
+    expect((await retrieve("报名时间", 1)).length).toBe(1);
   });
 
-  it("来源映射字段完整", () => {
-    const s = toSources(retrieve("奖项设置", 2));
+  it("混合检索分数保持在 [0,1] 区间且降序", async () => {
+    const r = await retrieve("违规行为会被取消资格吗", 5);
+    for (const item of r) {
+      expect(item.score).toBeGreaterThanOrEqual(0);
+      expect(item.score).toBeLessThanOrEqual(1.0001);
+    }
+    for (let i = 1; i < r.length; i++) {
+      expect(r[i - 1].score).toBeGreaterThanOrEqual(r[i].score);
+    }
+  });
+
+  it("来源映射字段完整", async () => {
+    const s = toSources(await retrieve("奖项设置", 2));
     for (const src of s) {
       expect(src.id).toMatch(/^kb-\d+$/);
       expect(src.title.length).toBeGreaterThan(0);
       expect(src.snippet.length).toBeGreaterThan(0);
     }
+  });
+
+  it("检索模式可解释（bm25 或 bm25+vector）", () => {
+    expect(["bm25", "bm25+vector"]).toContain(retrievalMode());
+  });
+
+  it("相关性判断：赛事问题命中，无关问题不命中", async () => {
+    expect(isRelevant("B组学生可以报名什么组别？", await retrieve("B组学生可以报名什么组别？", 3))).toBe(true);
+    expect(isRelevant("作品提交需要准备哪些材料？", await retrieve("作品提交需要准备哪些材料？", 3))).toBe(true);
+    expect(isRelevant("今天中午吃什么饭比较好呢", await retrieve("今天中午吃什么饭比较好呢", 3))).toBe(false);
+    expect(isRelevant("帮我写一首诗", await retrieve("帮我写一首诗", 3))).toBe(false);
   });
 });

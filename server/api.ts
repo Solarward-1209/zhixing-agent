@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AgentEvent, ChatRequestBody, HealthInfo } from "../shared/protocol";
 import { runAgent } from "./agent";
 import { getLlmConfig } from "./llm";
+import { retrievalMode } from "./rag";
 
 /**
  * HTTP 层：POST /api/chat（SSE 事件流）与 GET /api/health。
@@ -11,8 +12,8 @@ import { getLlmConfig } from "./llm";
 export function handleHealthRequest(res: ServerResponse): void {
   const config = getLlmConfig();
   const info: HealthInfo = config
-    ? { mode: "ai", provider: config.provider, model: config.model }
-    : { mode: "demo" };
+    ? { mode: "ai", provider: config.provider, model: config.model, retrieval: retrievalMode() }
+    : { mode: "demo", retrieval: retrievalMode() };
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(info));
 }

@@ -1,5 +1,5 @@
 import type { AgentEvent } from "../shared/protocol";
-import { retrieve, toSources } from "./rag";
+import { retrieve, toSources, isRelevant } from "./rag";
 import { executeTool } from "./tools";
 import { screenInput, applyDisclaimer, FALLBACK_REPLY } from "./safety";
 
@@ -100,10 +100,10 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
   // 3. RAG 检索（真实执行）
   if (intent.kinds.includes("kb")) {
     emit({ type: "status", stage: "retrieving" });
-    const results = retrieve(userText, 3);
+    const results = await retrieve(userText, 3);
     await runStep(`召回 ${results.length} 条候选，最高相关度 ${(results[0]?.score ?? 0).toFixed(2)}`);
 
-    if (results.length > 0 && results[0].score > 0.06) {
+    if (isRelevant(userText, results)) {
       emit({ type: "tool_call", callId: "kb-1", name: "query_knowledge_base", args: { query: userText, topK: 3 } });
       emit({
         type: "tool_result",
