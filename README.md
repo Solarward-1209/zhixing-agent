@@ -1,6 +1,6 @@
 # 知行 Agent —— 会规划、会查证、会使用工具的 AI 智能助手
 
-> 传智杯 · AI WEB 网页开发挑战赛 参赛作品 v0.2
+> 传智杯 · AI WEB 网页开发挑战赛 参赛作品
 > 赛道方向：**AI Agent 智能助手**（自主规划 · 工具调用 · 多轮对话 · RAG 查证 · 图片理解）
 >
 > [![CI](https://github.com/Solarward-1209/zhixing-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Solarward-1209/zhixing-agent/actions/workflows/ci.yml)

@@ -151,7 +151,7 @@ const getCurrentTime: RegisteredTool = {
   },
 };
 
-/** 模拟天气数据（初版演示用，数据为静态样例并在结果中明确标注） */
+/** 模拟天气数据（演示用，数据为静态样例并在结果中明确标注） */
 const MOCK_WEATHER: Record<string, { city: string; weather: string; temp: string; tip: string }> = {
   北京: { city: "北京", weather: "晴转多云", temp: "14 ~ 26℃", tip: "昼夜温差较大，建议备一件外套。" },
   上海: { city: "上海", weather: "多云", temp: "18 ~ 27℃", tip: "体感舒适，适合户外活动。" },
@@ -170,7 +170,7 @@ const getWeather: RegisteredTool = {
     type: "function",
     function: {
       name: "get_weather",
-      description: "查询指定城市的天气（初版为内置模拟数据，接口形态与真实数据源一致，便于后续替换为真实天气 API）。",
+      description: "查询指定城市的天气（内置模拟数据，接口形态与真实数据源一致，便于后续替换为真实天气 API）。",
       parameters: {
         type: "object",
         properties: {

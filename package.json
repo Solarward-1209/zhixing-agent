@@ -1,7 +1,7 @@
 {
   "name": "zhixing-agent",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "知行 Agent —— 会规划、会查证、会使用工具的 AI 智能助手（传智杯 AI WEB 网页开发挑战赛 参赛作品）",
   "scripts": {

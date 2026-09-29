@@ -106,7 +106,7 @@ export default function Sidebar({ sessions, activeId, onSwitch, onDelete, onNew,
       </div>
 
       <div className="px-5 pb-4 text-[11px] leading-5 text-slate-500">
-        传智杯 · AI WEB 网页开发挑战赛 参赛作品 v0.2
+        传智杯 · AI WEB 网页开发挑战赛 参赛作品
         <br />
         React 18 + Vite + Tailwind CSS
       </div>
