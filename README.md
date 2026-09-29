@@ -118,7 +118,7 @@ zhixing-agent/
 | 代码仓库（本仓库） | 公开 + README + 完整 Git 历史 | ✅ |
 | 技术文档（PDF，16 页） | [docs/知行Agent技术文档.pdf](docs/知行Agent技术文档.pdf) | ✅（团队信息页提交前填写） |
 | 演示视频脚本（5-8 分钟） | [docs/演示视频脚本.md](docs/演示视频脚本.md) | ✅ 脚本就绪，按脚本录制 |
-| 在线演示（加分项） | 部署指南见 DEPLOY.md | 🔧 部署后获得公网地址 |
+| 在线演示（加分项） | **https://zhixing-agent-production.up.railway.app** | ✅ 已上线（Railway 托管，健康检查/问答/引用已实测） |
 
 ## 🎯 与评审标准的对应（自评）
 
