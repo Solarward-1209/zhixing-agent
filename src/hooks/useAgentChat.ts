@@ -1,13 +1,62 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentEvent, HealthInfo } from "../../shared/protocol";
-import { isAssistant, uid, type ChatMessage, type PlanStep, type ToolCardData } from "../ui-types";
+import { isAssistant, uid, type ChatMessage } from "../ui-types";
 
 /**
- * 会话 Hook：负责向 /api/chat 发起 SSE 请求，并把 Agent 事件流
- * （status / plan / tool_call / token / sources…）增量应用到消息列表上。
+ * 会话 Hook：SSE 事件流客户端 + localStorage 多会话持久化。
+ * 会话（含消息）自动保存，刷新/重开后可恢复；新对话、切换、删除均可管理。
  */
+
+export interface StoredSession {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+const STORE_KEY = "zhixing.sessions.v1";
+
+function loadStore(): StoredSession[] {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as StoredSession[];
+    if (!Array.isArray(list)) return [];
+    return list.filter((s) => s && typeof s.id === "string" && Array.isArray(s.messages));
+  } catch {
+    return [];
+  }
+}
+
+function saveStore(list: StoredSession[]): void {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(list));
+  } catch {
+    // 存储已满或不可用时静默忽略（会话仍可在内存中使用）
+  }
+}
+
+function newSessionObject(): StoredSession {
+  return { id: uid(), title: "新对话", updatedAt: Date.now(), messages: [] };
+}
+
+function deriveTitle(current: string, messages: ChatMessage[]): string {
+  if (current !== "新对话") return current;
+  const first = messages.find((m) => m.role === "user");
+  if (!first) return "新对话";
+  const text = first.content.trim();
+  return text ? (text.length > 18 ? text.slice(0, 18) + "…" : text) : "图片对话";
+}
+
 export function useAgentChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<StoredSession[]>(() => {
+    const list = loadStore();
+    if (list.length === 0) list.push(newSessionObject());
+    list.sort((a, b) => b.updatedAt - a.updatedAt);
+    return list;
+  });
+  const [activeId, setActiveId] = useState<string>(() => sessions[0].id);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => sessions[0].messages);
   const [running, setRunning] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -19,13 +68,67 @@ export function useAgentChat() {
       .catch(() => setHealth(null));
   }, []);
 
+  // 消息变化时持久化到当前会话
+  useEffect(() => {
+    if (!activeId) return;
+    setSessions((prev) => {
+      const next = prev.map((s) =>
+        s.id === activeId ? { ...s, messages, updatedAt: Date.now(), title: deriveTitle(s.title, messages) } : s,
+      );
+      saveStore(next);
+      return next;
+    });
+  }, [messages, activeId]);
+
+  const createSession = useCallback(() => {
+    const s = newSessionObject();
+    setSessions((prev) => {
+      // 顺带清理历史遗留的空会话，避免无限堆积
+      const kept = prev.filter((x) => !(x.messages.length === 0 && x.title === "新对话"));
+      const next = [s, ...kept];
+      saveStore(next);
+      return next;
+    });
+    setActiveId(s.id);
+    setMessages([]);
+  }, []);
+
+  const switchSession = useCallback((id: string) => {
+    abortRef.current?.abort();
+    setSessions((prev) => {
+      const target = prev.find((s) => s.id === id);
+      if (target) {
+        setActiveId(id);
+        setMessages(target.messages);
+      }
+      return prev;
+    });
+  }, []);
+
+  const removeSession = useCallback(
+    (id: string) => {
+      abortRef.current?.abort();
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        const list = next.length > 0 ? next : [newSessionObject()];
+        saveStore(list);
+        if (id === activeId) {
+          setActiveId(list[0].id);
+          setMessages(list[0].messages);
+        }
+        return list;
+      });
+    },
+    [activeId],
+  );
+
   const send = useCallback(
     async (text: string, images?: string[]) => {
       const trimmed = text.trim();
       const imgs = images && images.length > 0 ? images : undefined;
       if ((!trimmed && !imgs) || abortRef.current) return;
 
-      // 计算历史（只保留最近 8 条，排除流式占位）
+      // 计算历史（只保留最近 8 条非空文本消息，排除流式占位与图片轮次）
       const historyPayload = messages
         .map((m) =>
           m.role === "user"
@@ -73,9 +176,9 @@ export function useAgentChat() {
           case "plan":
             patchAssistant((m) => {
               if (!isAssistant(m)) return m;
-              const steps: PlanStep[] = evt.steps.map((s, i) => ({
+              const steps = evt.steps.map((s, i) => ({
                 text: s,
-                status: i === 0 ? "done" : i === 1 ? "running" : "pending",
+                status: i === 0 ? ("done" as const) : i === 1 ? ("running" as const) : ("pending" as const),
               }));
               return { ...m, plan: steps };
             });
@@ -90,7 +193,7 @@ export function useAgentChat() {
             });
             break;
           case "tool_call": {
-            const card: ToolCardData = { callId: evt.callId, name: evt.name, args: evt.args };
+            const card = { callId: evt.callId, name: evt.name, args: evt.args };
             patchAssistant((m) => (isAssistant(m) ? { ...m, tools: [...m.tools, card] } : m));
             break;
           }
@@ -187,8 +290,8 @@ export function useAgentChat() {
 
   const reset = useCallback(() => {
     if (abortRef.current) return;
-    setMessages([]);
-  }, []);
+    createSession();
+  }, [createSession]);
 
-  return { messages, running, health, send, stop, reset };
+  return { messages, running, health, sessions, activeId, send, stop, reset, switchSession, removeSession };
 }

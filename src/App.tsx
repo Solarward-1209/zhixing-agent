@@ -12,7 +12,8 @@ const SUGGESTIONS = [
 ];
 
 export default function App() {
-  const { messages, running, health, send, stop, reset } = useAgentChat();
+  const { messages, running, health, sessions, activeId, send, stop, reset, switchSession, removeSession } =
+    useAgentChat();
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -22,7 +23,14 @@ export default function App() {
 
   return (
     <div className="flex h-full">
-      <Sidebar onPickSuggestion={(t) => void send(t)} />
+      <Sidebar
+        sessions={sessions}
+        activeId={activeId}
+        onSwitch={switchSession}
+        onDelete={removeSession}
+        onNew={reset}
+        onPickSuggestion={(t) => void send(t)}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col">
         {/* 顶栏 */}
