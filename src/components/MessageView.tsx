@@ -9,6 +9,18 @@ function MessageViewInner({ message }: { message: ChatMessage }) {
     return (
       <div className="flex animate-fade-in-up justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-indigo-500 to-indigo-600 px-4 py-2.5 text-[15px] leading-7 text-white shadow-lg shadow-indigo-950/40">
+          {message.images && message.images.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-2">
+              {message.images.map((src, i) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`用户发送的图片 ${i + 1}`}
+                  className="max-h-40 rounded-lg border border-white/20 object-cover"
+                />
+              ))}
+            </div>
+          )}
           {message.content}
         </div>
       </div>

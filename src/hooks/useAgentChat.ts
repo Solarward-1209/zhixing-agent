@@ -20,9 +20,10 @@ export function useAgentChat() {
   }, []);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, images?: string[]) => {
       const trimmed = text.trim();
-      if (!trimmed || abortRef.current) return;
+      const imgs = images && images.length > 0 ? images : undefined;
+      if ((!trimmed && !imgs) || abortRef.current) return;
 
       // 计算历史（只保留最近 8 条，排除流式占位）
       const historyPayload = messages
@@ -34,9 +35,10 @@ export function useAgentChat() {
               : null,
         )
         .filter((h): h is { role: "user" | "assistant"; content: string } => h !== null)
+        .filter((h) => h.content.trim().length > 0)
         .slice(-8);
 
-      const userMsg: ChatMessage = { role: "user", id: uid(), content: trimmed };
+      const userMsg: ChatMessage = { role: "user", id: uid(), content: trimmed, images: imgs };
       const assistantId = uid();
       const assistantMsg: ChatMessage = {
         role: "assistant",
@@ -122,7 +124,7 @@ export function useAgentChat() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, history: historyPayload }),
+          body: JSON.stringify({ message: trimmed, history: historyPayload, images: imgs }),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {

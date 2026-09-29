@@ -85,31 +85,15 @@ export async function chatCompletion(config: LlmConfig, messages: LlmMessage[]):
 }
 
 /**
- * 流式补全（SSE），回调逐段产出文本增量与完整工具调用。
+ * 解析 OpenAI 兼容的 SSE 流：产出文本增量与聚合完成的工具调用。
+ * 供 chatCompletionStream 与视觉模型通道复用。
  */
-export async function chatCompletionStream(
-  config: LlmConfig,
-  messages: LlmMessage[],
-  tools: ToolSchema[],
+export async function consumeSseStream(
+  body: ReadableStream<Uint8Array>,
   onDelta: (text: string) => void,
-  onToolCall: (call: ToolCallRequest) => void,
+  onToolCall?: (call: ToolCallRequest) => void,
 ): Promise<void> {
-  const res = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      tools: tools.length > 0 ? tools : undefined,
-      stream: true,
-      temperature: 0.6,
-    }),
-  });
-  if (!res.ok || !res.body) {
-    throw new Error(`LLM 流式请求失败：HTTP ${res.status}`);
-  }
-
-  const reader = res.body.getReader();
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   // 流式 tool_calls 按 index 聚合
@@ -133,7 +117,7 @@ export async function chatCompletionStream(
         if (!choice) continue;
         const delta = choice.delta;
         if (delta?.content) onDelta(delta.content);
-        if (delta?.tool_calls) {
+        if (onToolCall && delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
             const slot = pendingCalls.get(tc.index) ?? { id: "", name: "", args: "" };
             if (tc.id) slot.id = tc.id;
@@ -142,7 +126,7 @@ export async function chatCompletionStream(
             pendingCalls.set(tc.index, slot);
           }
         }
-        if (choice.finish_reason === "tool_calls") {
+        if (onToolCall && choice.finish_reason === "tool_calls") {
           for (const call of pendingCalls.values()) {
             onToolCall({ id: call.id || `call_${call.name}`, name: call.name, arguments: call.args || "{}" });
           }
@@ -153,8 +137,37 @@ export async function chatCompletionStream(
       }
     }
   }
-  // 某些网关不发 finish_reason=tool_calls，结束时兜底冲刷
-  for (const call of pendingCalls.values()) {
-    if (call.name) onToolCall({ id: call.id || `call_${call.name}`, name: call.name, arguments: call.args || "{}" });
+  if (onToolCall) {
+    // 某些网关不发 finish_reason=tool_calls，结束时兜底冲刷
+    for (const call of pendingCalls.values()) {
+      if (call.name) onToolCall({ id: call.id || `call_${call.name}`, name: call.name, arguments: call.args || "{}" });
+    }
   }
+}
+
+/**
+ * 流式补全（SSE），回调逐段产出文本增量与完整工具调用。
+ */
+export async function chatCompletionStream(
+  config: LlmConfig,
+  messages: LlmMessage[],
+  tools: ToolSchema[],
+  onDelta: (text: string) => void,
+  onToolCall: (call: ToolCallRequest) => void,
+): Promise<void> {
+  const res = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+    body: JSON.stringify({
+      model: config.model,
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+      stream: true,
+      temperature: 0.6,
+    }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`LLM 流式请求失败：HTTP ${res.status}`);
+  }
+  await consumeSseStream(res.body, onDelta, onToolCall);
 }

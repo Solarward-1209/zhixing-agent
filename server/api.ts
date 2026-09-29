@@ -3,6 +3,7 @@ import type { AgentEvent, ChatRequestBody, HealthInfo } from "../shared/protocol
 import { runAgent } from "./agent";
 import { getLlmConfig } from "./llm";
 import { retrievalMode } from "./rag";
+import { sanitizeImages } from "./vision";
 
 /**
  * HTTP 层：POST /api/chat（SSE 事件流）与 GET /api/health。
@@ -43,6 +44,7 @@ export function handleAgentRequest(req: IncomingMessage, res: ServerResponse): v
       return;
     }
     const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+    const images = sanitizeImages(body.images);
 
     // SSE 响应头
     res.writeHead(200, {
@@ -68,7 +70,7 @@ export function handleAgentRequest(req: IncomingMessage, res: ServerResponse): v
       if (!res.writableEnded) closed = true;
     });
 
-    runAgent(message, history, emit)
+    runAgent(message, history, images, emit)
       .catch((err) => {
         emit({ type: "error", message: err instanceof Error ? err.message : "服务器内部错误" });
         emit({ type: "done" });

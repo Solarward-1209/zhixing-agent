@@ -4,6 +4,7 @@ import { toolSchemas, executeTool } from "./tools";
 import { retrieve, toSources, buildKbContext, isRelevant } from "./rag";
 import { screenInput, FALLBACK_REPLY } from "./safety";
 import { runDemoAgent } from "./demo";
+import { runVisionPath } from "./vision";
 
 /**
  * Agent 编排器：理解 → 规划 → 行动（RAG + 工具）→ 生成 的主循环。
@@ -29,7 +30,18 @@ interface HistoryTurn {
   content: string;
 }
 
-export async function runAgent(userText: string, history: HistoryTurn[], emit: Emit): Promise<void> {
+export async function runAgent(
+  userText: string,
+  history: HistoryTurn[],
+  images: string[] | undefined,
+  emit: Emit,
+): Promise<void> {
+  // 图片输入走多模态通道（视觉模型直答，不走 RAG/工具）
+  if (images && images.length > 0) {
+    await runVisionPath(userText, images, emit);
+    return;
+  }
+
   const config = getLlmConfig();
   if (!config) {
     await runDemoAgent(userText, emit);

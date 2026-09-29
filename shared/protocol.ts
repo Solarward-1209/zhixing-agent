@@ -48,6 +48,8 @@ export interface ChatRequestBody {
   message: string;
   /** 历史对话（最近若干轮），role 仅为 user / assistant */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** 可选图片（data URL），存在时走多模态视觉通道 */
+  images?: string[];
 }
 
 /** /api/health 返回：告知前端当前运行在真实大模型还是本地演示模式 */

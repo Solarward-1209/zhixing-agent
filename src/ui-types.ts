@@ -19,6 +19,8 @@ export interface UserMessage {
   role: "user";
   id: string;
   content: string;
+  /** 随消息发送的图片（data URL），仅当前消息有效 */
+  images?: string[];
 }
 
 export interface AssistantMessage {
