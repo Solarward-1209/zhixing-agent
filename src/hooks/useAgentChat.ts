@@ -158,6 +158,16 @@ export function useAgentChat() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // 看门狗：超过 120 秒没有任何事件就主动中断，避免界面永久卡在"停止"状态
+      let watchdogFired = false;
+      let lastEventAt = Date.now();
+      const watchdog = setInterval(() => {
+        if (Date.now() - lastEventAt > 120_000) {
+          watchdogFired = true;
+          controller.abort();
+        }
+      }, 5000);
+
       const patchAssistant = (patch: (m: ChatMessage) => ChatMessage) => {
         setMessages((prev) => {
           const idx = prev.findIndex((m) => m.id === assistantId);
@@ -169,6 +179,7 @@ export function useAgentChat() {
       };
 
       const applyEvent = (evt: AgentEvent) => {
+        lastEventAt = Date.now();
         switch (evt.type) {
           case "status":
             patchAssistant((m) => (isAssistant(m) ? { ...m, stage: evt.stage } : m));
@@ -269,10 +280,25 @@ export function useAgentChat() {
                 }
               : m,
           );
+        } else if (watchdogFired) {
+          patchAssistant((m) =>
+            isAssistant(m)
+              ? {
+                  ...m,
+                  streaming: false,
+                  stage: "finished",
+                  error: "响应超时",
+                  content:
+                    m.content ||
+                    "抱歉，本次回答等待超时了（可能是网络不稳定或服务繁忙）。请重试；若发送的是图片，可压缩后重试或改用文字描述。",
+                }
+              : m,
+          );
         } else {
           patchAssistant((m) => (isAssistant(m) ? { ...m, streaming: false, stage: "finished" } : m));
         }
       } finally {
+        clearInterval(watchdog);
         abortRef.current = null;
         setRunning(false);
         // 未收到 done 事件时兜底结束流式状态

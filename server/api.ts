@@ -38,13 +38,14 @@ export function handleAgentRequest(req: IncomingMessage, res: ServerResponse): v
       return;
     }
     const message = (body.message ?? "").trim();
-    if (!message) {
+    const images = sanitizeImages(body.images);
+    // 纯图片发送允许 message 为空（视觉通道会用默认指令描述图片）
+    if (!message && images.length === 0) {
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: "message is required" }));
       return;
     }
     const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
-    const images = sanitizeImages(body.images);
 
     // SSE 响应头
     res.writeHead(200, {

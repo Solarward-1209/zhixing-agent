@@ -80,7 +80,7 @@ export default function App() {
         </div>
 
         {/* 输入区 */}
-        <ChatInput running={running} onSend={(t) => void send(t)} onStop={stop} />
+        <ChatInput running={running} onSend={(t, imgs) => void send(t, imgs)} onStop={stop} />
       </main>
     </div>
   );

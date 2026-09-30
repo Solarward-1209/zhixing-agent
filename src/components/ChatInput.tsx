@@ -40,6 +40,10 @@ export default function ChatInput({ running, onSend, onStop }: ChatInputProps) {
       try {
         // 本地压缩/转码：解决手机照片体积超限与 iPhone HEIC 格式无法识别的问题
         const dataUrl = await normalizeImage(f);
+        if (dataUrl.length > 6_500_000) {
+          setNotice(`「${f.name}」压缩后仍过大，请截取关键部分后再试`);
+          continue;
+        }
         let added = false;
         setImages((prev) => {
           if (prev.length >= MAX_IMAGES) return prev;
