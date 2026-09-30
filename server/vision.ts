@@ -79,10 +79,11 @@ export async function runVisionPath(userText: string, images: string[], emit: Em
     emit({
       type: "token",
       content:
-        "📷 检测到图片输入，但尚未配置视觉模型。\n\n" +
-        "启用方法：在 `.env` 中加入以下配置并重启（智谱 GLM-4V-Flash 有免费额度）：\n\n" +
+        "📷 图片已收到，但尚未配置视觉模型，暂时无法识图。\n\n" +
+        "启用方法（智谱 GLM-4V-Flash 有免费额度）：在 `.env` 中加入以下配置并重启：\n\n" +
         "```bash\nVISION_API_KEY=你的智谱APIKey\nVISION_MODEL=glm-4v-flash\n```\n\n" +
-        "配置后即可发送图片并针对图片提问（识别内容、转录文字、答疑等）。",
+        "配置后即可发送图片并针对图片提问（识别内容、转录文字、答疑等）。\n" +
+        "也可以先把图片里的文字打出来直接问我。",
     });
     emit({ type: "done", meta: { mode: getLlmConfig() ? "ai" : "demo" } });
     return;

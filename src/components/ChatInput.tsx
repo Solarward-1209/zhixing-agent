@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { normalizeImage } from "../utils/image";
 
 interface ChatInputProps {
   running: boolean;
@@ -7,7 +8,8 @@ interface ChatInputProps {
 }
 
 const MAX_IMAGES = 2;
-const MAX_FILE_BYTES = 4 * 1024 * 1024;
+/** 原始文件上限：超限直接跳过；限内的照片会先在本地压缩再上传（见 utils/image.ts） */
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export default function ChatInput({ running, onSend, onStop }: ChatInputProps) {
   const [text, setText] = useState("");
@@ -23,26 +25,37 @@ export default function ChatInput({ running, onSend, onStop }: ChatInputProps) {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   };
 
-  const pickImages = (e: ChangeEvent<HTMLInputElement>) => {
+  const pickImages = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     setNotice("");
+    let full = false;
     for (const f of files) {
-      if (images.length >= MAX_IMAGES) {
-        setNotice(`一次最多发送 ${MAX_IMAGES} 张图片`);
-        break;
-      }
-      if (!f.type.startsWith("image/")) continue;
+      const isImage = f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name);
+      if (!isImage) continue;
       if (f.size > MAX_FILE_BYTES) {
-        setNotice(`「${f.name}」超过 4MB，已跳过`);
+        setNotice(`「${f.name}」超过 25MB，已跳过`);
         continue;
       }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = String(reader.result);
-        setImages((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, dataUrl]));
-      };
-      reader.readAsDataURL(f);
+      try {
+        // 本地压缩/转码：解决手机照片体积超限与 iPhone HEIC 格式无法识别的问题
+        const dataUrl = await normalizeImage(f);
+        let added = false;
+        setImages((prev) => {
+          if (prev.length >= MAX_IMAGES) return prev;
+          added = true;
+          return [...prev, dataUrl];
+        });
+        if (!added) {
+          full = true;
+          break;
+        }
+      } catch {
+        setNotice(`「${f.name}」读取失败，请换一张试试`);
+      }
+    }
+    if (full) {
+      setNotice(`一次最多发送 ${MAX_IMAGES} 张图片`);
     }
   };
 
