@@ -90,7 +90,7 @@ export default function Sidebar({ sessions, activeId, onSwitch, onDelete, onNew,
       <div className="border-t border-slate-800 px-4 py-4">
         <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-300">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          传智杯备赛知识库 · 15 篇
+          传智杯全赛道知识库 · 31 篇
         </div>
         <div className="flex flex-wrap gap-1.5">
           {KB_TOPICS.map((t) => (
