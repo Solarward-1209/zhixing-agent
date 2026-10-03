@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AgentEvent, ChatRequestBody, HealthInfo } from "../shared/protocol";
 import { runAgent } from "./agent";
 import { getLlmConfig } from "./llm";
-import { retrievalMode, knowledgeSize } from "./rag";
+import { retrievalMode, knowledgeSize, domains } from "./rag";
 import { sanitizeImages, hasVisionConfig } from "./vision";
 
 /**
@@ -67,8 +67,15 @@ export function handleHealthRequest(res: ServerResponse): void {
         retrieval: retrievalMode(),
         vision: hasVisionConfig(),
         knowledgeChunks: knowledgeSize(),
+        domains: domains(),
       }
-    : { mode: "demo", retrieval: retrievalMode(), vision: hasVisionConfig(), knowledgeChunks: knowledgeSize() };
+    : {
+        mode: "demo",
+        retrieval: retrievalMode(),
+        vision: hasVisionConfig(),
+        knowledgeChunks: knowledgeSize(),
+        domains: domains(),
+      };
   sendJson(res, 200, info);
 }
 
@@ -141,6 +148,10 @@ export function handleAgentRequest(req: IncomingMessage, res: ServerResponse): v
       return;
     }
     const history = normalizeHistory(body.history);
+    // 知识域白名单校验：只接受服务端已知的域 id，防止把任意字符串带进检索层
+    const knownDomains = new Set(["all", ...domains().map((d) => d.id)]);
+    const requested = typeof body.domain === "string" ? body.domain.trim() : "";
+    const domain = knownDomains.has(requested) ? requested : "all";
 
     // SSE 响应头
     res.writeHead(200, {
@@ -169,7 +180,7 @@ export function handleAgentRequest(req: IncomingMessage, res: ServerResponse): v
       }
     });
 
-    runAgent(message, history, images, emit, { signal: controller.signal })
+    runAgent(message, history, images, emit, { signal: controller.signal, domain })
       .catch((err) => {
         emit({ type: "error", message: err instanceof Error ? err.message : "服务器内部错误" });
         emit({ type: "done" });

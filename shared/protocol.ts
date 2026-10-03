@@ -50,6 +50,8 @@ export interface ChatRequestBody {
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   /** 可选图片（data URL），存在时由 Agent 自主调用图片理解工具 */
   images?: string[];
+  /** 知识域 id（competition / campus / all），决定检索哪一份语料 */
+  domain?: string;
 }
 
 /** /api/health 返回：告知前端当前运行在真实大模型还是本地演示模式 */
@@ -63,4 +65,6 @@ export interface HealthInfo {
   vision?: boolean;
   /** 知识库规模，便于前端展示与评审核对 */
   knowledgeChunks?: number;
+  /** 可用知识域列表（多场景可迁移能力的工程证据） */
+  domains?: Array<{ id: string; name: string; description: string; chunks: number }>;
 }

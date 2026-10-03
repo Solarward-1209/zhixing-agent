@@ -1,6 +1,6 @@
 import type { AgentEvent } from "../shared/protocol";
 import { getLlmConfig, chatCompletion, chatCompletionStream, type LlmMessage, type ToolCallRequest } from "./llm";
-import { toolSchemas, executeTool, type ToolContext } from "./tools";
+import { listToolSchemas, executeTool, type ToolContext } from "./tools";
 import { retrieve, toSources, buildKbContext, isRelevant, relevanceLabel } from "./rag";
 import { screenInput, applyDisclaimer, redactSecrets, FALLBACK_REPLY } from "./safety";
 import { runDemoAgent } from "./demo";
@@ -48,6 +48,8 @@ interface HistoryTurn {
 export interface RunAgentOptions {
   /** 外部取消信号（用户停止 / 连接断开） */
   signal?: AbortSignal;
+  /** 知识域：competition / campus / all */
+  domain?: string;
 }
 
 // ---------- 计划步骤追踪：让"可视化"与真实执行严格对应 ----------
@@ -155,6 +157,7 @@ const TOOL_STEP_KEYWORDS: Record<string, string[]> = {
 
 function isToolFailure(result: { summary: string; data?: Record<string, unknown> }): boolean {
   if (result.data && result.data.failed === true) return true;
+  if (result.data && result.data.isError === true) return true;
   return /^(计算失败|天气查询失败|未知工具|工具执行出错|图片理解失败|尚未配置)/.test(result.summary);
 }
 
@@ -166,6 +169,7 @@ export async function runAgent(
   options: RunAgentOptions = {},
 ): Promise<void> {
   const signal = options.signal;
+  const domain = options.domain ?? "all";
   const hasImages = Array.isArray(images) && images.length > 0;
   const config = getLlmConfig();
 
@@ -185,7 +189,7 @@ export async function runAgent(
       await runVisionPath(userText, images ?? [], emit, signal);
       return;
     }
-    await runDemoAgent(userText, emit);
+    await runDemoAgent(userText, emit, { domain });
     return;
   }
 
@@ -248,7 +252,7 @@ export async function runAgent(
     // 5. RAG：检索知识库并注入上下文（对应 RAG 技术应用评分点）
     emit({ type: "status", stage: "retrieving" });
     tracker.start(["检索", "查证", "知识"]);
-    const hits = await retrieve(userText || "图片内容", 3);
+    const hits = await retrieve(userText || "图片内容", 3, { domain });
     const sources = toSources(hits);
     const kbContext = buildKbContext(hits);
     const relevant = isRelevant(userText || "图片内容", hits);
@@ -281,7 +285,9 @@ export async function runAgent(
 
     // 6. 带工具的流式生成主循环
     emit({ type: "status", stage: "answering" });
+    const domainName = domain === "all" ? "全部知识域" : domain === "campus" ? "校园学习" : "赛事备赛";
     const systemParts = [SYSTEM_PROMPT];
+    systemParts.push(`\n\n【本次对话挂载的知识域】${domainName}。若检索结果为空或与问题无关，请说明"当前知识域中没有相关资料"，不要用记忆中的数据顶替。`);
     if (visionContext) systemParts.push(`\n\n【用户上传图片的理解结果】\n${visionContext}\n（以上由视觉模型生成，回答图片相关问题时请基于它，不要臆测图中不存在的内容。）`);
     if (kbContext) systemParts.push(`\n\n【检索到的知识库片段】回答相关问题时请引用（标注 [n]）：\n\n${kbContext}`);
     if (hasImages) systemParts.push("\n\n注意：本轮对话包含用户上传的图片。若已有图片理解结果，直接使用即可；如需更细的信息可再次调用 understand_image。");
@@ -299,10 +305,11 @@ export async function runAgent(
       let producedToolCall = false;
       const collectedToolCalls: ToolCallRequest[] = [];
 
+      const activeTools = await listToolSchemas({ signal });
       await chatCompletionStream(
         config,
         messages,
-        toolSchemas(),
+        activeTools,
         (text) => guard.push(text),
         (call) => {
           producedToolCall = true;
