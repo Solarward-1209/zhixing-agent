@@ -49,6 +49,30 @@ AI_PROVIDER=deepseek AI_API_KEY=<你的Key> PORT=80 npm run server
 
 本作品的 `/api/chat`（SSE 流式）是常驻 Node 服务，不是 Serverless 函数。当前架构面向 Render/Railway/Docker 这类"长驻进程"平台零改动部署；如需 Vercel，需将 `server/` 改写为 Route Handler（Next.js 迁移路线，见 README 路线图）。
 
+## 评审期服务保障（重要）
+
+在线演示是可选加分项，但"评审期间须保持服务可用"是硬要求。建议做三件事：
+
+1. **保活**：`.github/workflows/healthcheck.yml` 已配置每 10 分钟探活一次，
+   既能唤醒免费档实例，也能在服务异常时于 Actions 留下红色记录。
+   如演示地址变更，在仓库 **Settings → Variables** 新增 `DEMO_URL` 即可。
+2. **额度**：大模型 Key 会持续消耗，建议为评审期单独准备一个 Key 并预留额度；
+   即使 Key 失效，应用也会自动进入**演示模式**（检索与工具仍真实执行），不会白屏。
+3. **降级预案**：把演示视频与一份"本地运行截图"准备好；万一线上不可用，
+   视频仍是可提交的证据。`/api/health` 可随时确认当前模式与知识库规模。
+
+## 接入标准 MCP Server（可选增强）
+
+在平台环境变量中声明即可，Agent 会自动发现并注册远端工具：
+
+```bash
+MCP_SERVERS=[{"name":"filesystem","url":"https://your-mcp-host/mcp","headers":{"Authorization":"Bearer xxx"}}]
+# 或单个 Server 的简写
+MCP_SERVER_URL=https://your-mcp-host/mcp
+```
+
+未配置、网络不通或协议不兼容时都会**静默降级**为内置工具，不影响主流程。
+
 ## 部署后自检清单
 
 - [ ] 访问 `/api/health` 返回 `{"mode":"ai",...}`（而非 demo）
