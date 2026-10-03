@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRelevant, retrieve, retrievalMode, toSources } from "../server/rag";
+import { isRelevant, knowledgeSize, relevanceLabel, retrieve, retrievalMode, termCoverage, toSources } from "../server/rag";
 
 describe("知识库混合检索（BM25 + 可插拔向量）", () => {
   it("组别问题召回组别规则文档", async () => {
@@ -51,5 +51,25 @@ describe("知识库混合检索（BM25 + 可插拔向量）", () => {
     expect(isRelevant("作品提交需要准备哪些材料？", await retrieve("作品提交需要准备哪些材料？", 3))).toBe(true);
     expect(isRelevant("今天中午吃什么饭比较好呢", await retrieve("今天中午吃什么饭比较好呢", 3))).toBe(false);
     expect(isRelevant("帮我写一首诗", await retrieve("帮我写一首诗", 3))).toBe(false);
+  });
+
+  it("原始分数被保留，不再是「最高分恒为 1.00」的假指标", async () => {
+    const r = await retrieve("评审标准与权重", 3);
+    expect(r[0].score).toBeCloseTo(1, 5); // 归一化展示分
+    expect(r[0].rawScore).toBeGreaterThan(0); // 真实融合分
+    const label = relevanceLabel("评审标准与权重", r);
+    expect(label).toMatch(/词项覆盖率 \d+%/);
+    expect(label).not.toContain("1.00");
+  });
+
+  it("词项覆盖率可解释且落在 [0,1]", () => {
+    const c = termCoverage("B组报名规则", "参赛组别与报名规则", "B组适用于普通本科院校学生。");
+    expect(c).toBeGreaterThan(0);
+    expect(c).toBeLessThanOrEqual(1);
+    expect(termCoverage("完全无关的提问", "参赛组别与报名规则", "B组适用于普通本科院校学生。")).toBeLessThan(0.2);
+  });
+
+  it("知识库规模可被 /api/health 读取", () => {
+    expect(knowledgeSize()).toBeGreaterThanOrEqual(30);
   });
 });

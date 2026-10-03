@@ -20,7 +20,10 @@ export interface KbChunk {
 
 export interface RetrievalResult {
   chunk: KbChunk;
+  /** 归一化到 [0,1] 的展示分（最高分为 1.0，仅用于排序与可视化） */
   score: number;
+  /** 归一化之前的原始融合分 / BM25 分，用于如实展示"相关度"而不是恒定的 1.00 */
+  rawScore: number;
 }
 
 function loadKnowledgeBase(): KbChunk[] {
@@ -135,6 +138,11 @@ function cosine(a: number[], b: number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
+/** 知识库规模（供 /api/health 与界面展示） */
+export function knowledgeSize(): number {
+  return N;
+}
+
 /** 当前检索模式（供 /api/health 与日志展示） */
 export function retrievalMode(): "bm25" | "bm25+vector" {
   return getEmbedder() ? "bm25+vector" : "bm25";
@@ -203,10 +211,15 @@ export async function retrieve(query: string, topK = 3): Promise<RetrievalResult
   }
 
   scored.sort((a, b) => b.score - a.score);
+  const rawById = new Map(scored.map((r) => [r.chunk.id, r.score]));
   // 统一归一化到 [0,1]：最高分为 1.0，保证不同模式下分数语义一致
   const nb = maxNormalize(scored);
   return scored
-    .map((r) => ({ chunk: r.chunk, score: nb.get(r.chunk.id) ?? 0 }))
+    .map((r) => ({
+      chunk: r.chunk,
+      score: nb.get(r.chunk.id) ?? 0,
+      rawScore: rawById.get(r.chunk.id) ?? 0,
+    }))
     .filter((r) => r.score > 0)
     .slice(0, topK);
 }
@@ -217,12 +230,28 @@ export async function retrieve(query: string, topK = 3): Promise<RetrievalResult
  */
 export function isRelevant(query: string, results: RetrievalResult[], minCoverage = 0.2): boolean {
   if (results.length === 0 || results[0].score <= 0) return false;
+  return termCoverage(query, results[0].chunk.title, results[0].chunk.text) >= minCoverage;
+}
+
+/** 查询词项在文档中的覆盖率（[0,1]），与语料规模无关，可解释性强 */
+export function termCoverage(query: string, title: string, text: string): number {
   const qTerms = new Set(tokenize(query));
-  if (qTerms.size === 0) return false;
-  const docTerms = new Set(tokenize(`${results[0].chunk.title} ${results[0].chunk.text}`));
+  if (qTerms.size === 0) return 0;
+  const docTerms = new Set(tokenize(`${title} ${text}`));
   let hit = 0;
   for (const t of qTerms) if (docTerms.has(t)) hit++;
-  return hit / qTerms.size >= minCoverage;
+  return hit / qTerms.size;
+}
+
+/**
+ * 检索质量的可读标签。避免此前"最高相关度恒为 1.00"的失真展示：
+ * 用词项覆盖率 + 命中条数共同描述，评委/用户都能看懂。
+ */
+export function relevanceLabel(query: string, results: RetrievalResult[]): string {
+  if (results.length === 0) return "无召回";
+  const top = results[0];
+  const coverage = Math.round(termCoverage(query, top.chunk.title, top.chunk.text) * 100);
+  return `召回 ${results.length} 条，最高词项覆盖率 ${coverage}%`;
 }
 
 /** 把检索结果整理成前端可展示的来源列表 */
