@@ -9,7 +9,7 @@ export type AgentStage =
   | "understanding" // 理解问题
   | "planning" // 生成执行计划
   | "retrieving" // 检索知识库（RAG）
-  | "tooling" // 调用外部工具
+  | "tooling" // 调用外部工具（含图片理解）
   | "answering" // 生成回答
   | "finished";
 
@@ -24,7 +24,7 @@ export interface KbSource {
 export interface ToolResultPayload {
   summary: string;
   data?: Record<string, unknown>;
-  display?: "card-weather" | "card-calc" | "card-kb" | "plain";
+  display?: "card-weather" | "card-calc" | "card-kb" | "card-vision" | "plain";
 }
 
 export type AgentEvent =
@@ -38,7 +38,7 @@ export type AgentEvent =
   | { type: "tool_result"; callId: string; name: string; ok: boolean; result: ToolResultPayload }
   /** 回答 token 流 */
   | { type: "token"; content: string }
-  /** 本轮回答引用的知识库来源 */
+  /** 本轮回答引用的知识库来源（空数组表示"已检索但无高相关内容"） */
   | { type: "sources"; sources: KbSource[] }
   | { type: "error"; message: string }
   | { type: "done"; meta?: { mode: "demo" | "ai"; model?: string } };
@@ -48,7 +48,7 @@ export interface ChatRequestBody {
   message: string;
   /** 历史对话（最近若干轮），role 仅为 user / assistant */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
-  /** 可选图片（data URL），存在时走多模态视觉通道 */
+  /** 可选图片（data URL），存在时由 Agent 自主调用图片理解工具 */
   images?: string[];
 }
 
@@ -59,4 +59,8 @@ export interface HealthInfo {
   model?: string;
   /** 检索模式：bm25（本地）或 bm25+vector（配置了 Embedding Key 的混合检索） */
   retrieval?: "bm25" | "bm25+vector";
+  /** 是否已配置视觉模型（决定图片输入是否可用） */
+  vision?: boolean;
+  /** 知识库规模，便于前端展示与评审核对 */
+  knowledgeChunks?: number;
 }

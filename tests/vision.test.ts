@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../shared/protocol";
-import { buildVisionMessages, MAX_IMAGES, runVisionPath, sanitizeImages } from "../server/vision";
+import { buildVisionMessages, describeImage, MAX_IMAGES, runVisionPath, sanitizeImages } from "../server/vision";
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
+
+/** 让"未配置视觉模型"的用例不再依赖开发者本机 .env */
+function stubNoVision(): void {
+  vi.stubEnv("VISION_API_KEY", "");
+  vi.stubEnv("AI_PROVIDER", "deepseek");
+}
 
 describe("图片输入校验", () => {
   it("仅接受 data:image/ 开头且不超过体积上限的图片", () => {
@@ -40,9 +46,10 @@ describe("视觉消息构建（OpenAI 兼容格式）", () => {
 });
 
 describe("未配置视觉模型时的优雅降级", () => {
-  // 注意：本测试依赖当前 .env 未启用 zhipu 提供商（deepseek 无视觉能力），
-  // 若改为 AI_PROVIDER=zhipu 且配有 Key，此用例需相应调整。
+  afterEach(() => vi.unstubAllEnvs());
+
   it("返回引导话术而不是报错", async () => {
+    stubNoVision();
     const events: AgentEvent[] = [];
     await runVisionPath("图里有什么？", [PNG], (e) => events.push(e));
     const text = events
@@ -54,5 +61,35 @@ describe("未配置视觉模型时的优雅降级", () => {
     const types = events.map((e) => e.type);
     expect(types).not.toContain("error");
     expect(types).toContain("done");
+  });
+
+  it("未配置时 describeImage 直接抛错，便于上层转成引导话术", async () => {
+    stubNoVision();
+    await expect(describeImage("图里有什么？", [PNG])).rejects.toThrow("尚未配置");
+  });
+});
+
+describe("已配置但调用失败时的可执行提示", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("给出 error 事件与排查建议，而不是笼统的失败", async () => {
+    vi.stubEnv("VISION_API_KEY", "test-key");
+    vi.stubEnv("VISION_MODEL", "glm-4v-flash");
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("network down");
+    });
+    const events: AgentEvent[] = [];
+    await runVisionPath("图里有什么？", [PNG], (e) => events.push(e));
+    const types = events.map((e) => e.type);
+    expect(types).toContain("error");
+    const text = events
+      .filter((e) => e.type === "token")
+      .map((e) => (e.type === "token" ? e.content : ""))
+      .join("");
+    expect(text).toContain("VISION_API_KEY");
+    expect(text).toContain("重试");
   });
 });

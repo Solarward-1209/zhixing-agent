@@ -1,5 +1,5 @@
 import type { AgentEvent } from "../shared/protocol";
-import { retrieve, toSources, isRelevant } from "./rag";
+import { retrieve, toSources, isRelevant, relevanceLabel } from "./rag";
 import { executeTool } from "./tools";
 import { screenInput, applyDisclaimer, FALLBACK_REPLY } from "./safety";
 
@@ -13,6 +13,9 @@ import { screenInput, applyDisclaimer, FALLBACK_REPLY } from "./safety";
 type Emit = (event: AgentEvent) => void;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 演示模式强制使用离线样例天气，保证无网络环境下流水线可复现 */
+const DEMO_TOOL_CTX = { weatherMode: "mock" } as const;
 
 async function streamText(emit: Emit, text: string): Promise<void> {
   // 按小块流式输出，模拟 token 流
@@ -66,7 +69,9 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
   emit({ type: "status", stage: "understanding" });
   const check = screenInput(userText);
   if (!check.ok) {
+    emit({ type: "error", message: `内容安全拦截：${check.reason ?? "命中风险规则"}` });
     await streamText(emit, check.refusal ?? FALLBACK_REPLY);
+    emit({ type: "status", stage: "finished" });
     emit({ type: "done", meta: { mode: "demo" } });
     return;
   }
@@ -101,7 +106,7 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
   if (intent.kinds.includes("kb")) {
     emit({ type: "status", stage: "retrieving" });
     const results = await retrieve(userText, 3);
-    await runStep(`召回 ${results.length} 条候选，最高相关度 ${(results[0]?.score ?? 0).toFixed(2)}`);
+    await runStep(relevanceLabel(userText, results));
 
     if (isRelevant(userText, results)) {
       emit({ type: "tool_call", callId: "kb-1", name: "query_knowledge_base", args: { query: userText, topK: 3 } });
@@ -111,8 +116,8 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
         name: "query_knowledge_base",
         ok: true,
         result: {
-          summary: `从知识库召回 ${results.length} 条相关内容（最高相关度 ${results[0].score.toFixed(2)}）`,
-          data: { topTitle: results[0].chunk.title, topScore: Number(results[0].score.toFixed(3)) },
+          summary: `知识库${relevanceLabel(userText, results)}（最相关：《${results[0].chunk.title}》）`,
+          data: { topTitle: results[0].chunk.title, topScore: Number(results[0].rawScore.toFixed(3)) },
           display: "card-kb",
         },
       });
@@ -137,7 +142,7 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
   if (intent.kinds.includes("time")) {
     emit({ type: "status", stage: "tooling" });
     emit({ type: "tool_call", callId: "t-1", name: "get_current_time", args: {} });
-    const result = await executeTool("get_current_time", {});
+    const result = await executeTool("get_current_time", {}, DEMO_TOOL_CTX);
     emit({ type: "tool_result", callId: "t-1", name: "get_current_time", ok: true, result });
     await runStep(result.summary);
     sections.push(`${result.summary}。`);
@@ -148,7 +153,7 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
     const cityMatch = userText.match(/(北京|上海|广州|深圳|杭州|成都|南京|武汉|西安|重庆)/);
     const city = cityMatch ? cityMatch[1] : "北京";
     emit({ type: "tool_call", callId: "w-1", name: "get_weather", args: { city } });
-    const result = await executeTool("get_weather", { city });
+    const result = await executeTool("get_weather", { city }, DEMO_TOOL_CTX);
     emit({ type: "tool_result", callId: "w-1", name: "get_weather", ok: true, result });
     await runStep(result.summary);
     sections.push(`${result.summary}。${city}今日出行提示：注意天气变化，合理安排出行～`);
@@ -159,7 +164,7 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
     const mathMatch = userText.match(/[-(]?\d[\d\s.+\-*/%()×÷]*\d\)?|\d+(?:\.\d+)?\s*[-+*/%]\s*\d+(?:\.\d+)?/);
     const expression = (mathMatch ? mathMatch[0] : userText.replace(/[^0-9+\-*/%().×÷]/g, "")).replace(/×/g, "*").replace(/÷/g, "/");
     emit({ type: "tool_call", callId: "c-1", name: "calculate", args: { expression } });
-    const result = await executeTool("calculate", { expression });
+    const result = await executeTool("calculate", { expression }, DEMO_TOOL_CTX);
     emit({ type: "tool_result", callId: "c-1", name: "calculate", ok: true, result });
     await runStep(result.summary);
     sections.push(
