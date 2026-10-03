@@ -21,6 +21,10 @@ export interface StoredSession {
 
 const STORE_KEY = "zhixing.sessions.v1";
 
+/**
+ * 读取本地会话。任何异常（无存储、JSON 损坏、结构不符）都退化为空数组：
+ * 会话数据是"锦上添花"，绝不能因为一份坏掉的 localStorage 让应用起不来。
+ */
 function loadStore(): StoredSession[] {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -33,6 +37,7 @@ function loadStore(): StoredSession[] {
   }
 }
 
+/** 写入本地会话。写入失败（多见于隐私模式或配额已满）时静默忽略，内存中的会话仍然可用。 */
 function saveStore(list: StoredSession[]): void {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(list));
@@ -41,10 +46,15 @@ function saveStore(list: StoredSession[]): void {
   }
 }
 
+/** 新建空白会话；id 用时间戳+随机串，避免多标签页下碰撞 */
 function newSessionObject(): StoredSession {
   return { id: uid(), title: "新对话", updatedAt: Date.now(), messages: [] };
 }
 
+/**
+ * 会话标题：仅在仍是默认标题时，用第一条用户消息生成；
+ * 一旦用户有了真实对话，后续切换会话不再覆盖标题，避免"翻旧账"式改名。
+ */
 function deriveTitle(current: string, messages: ChatMessage[]): string {
   if (current !== "新对话") return current;
   const first = messages.find((m) => m.role === "user");
@@ -135,7 +145,16 @@ export function useAgentChat() {
     [activeId],
   );
 
-  /** 核心发送逻辑：base 为本次请求之前的完整消息列表（支持"重新生成"） */
+  /**
+   * 核心发送逻辑。
+   *
+   * @param base 本次请求之前的完整消息列表。正常发送时是当前消息列表；
+   *             "重新生成"时是截断到目标用户消息之前的历史——
+   *             这样重发与首次发送走的是完全相同的代码路径，不会出现两套行为。
+   *
+   * 失败处理遵循"三层兜底"：网络异常 → 中断原因判定 → finally 中兜底结束流式状态，
+   * 保证界面上永远不会留下一个转不完的菊花。
+   */
   const doSend = useCallback(async (text: string, images: string[] | undefined, base: ChatMessage[]) => {
     const trimmed = text.trim();
     const imgs = images && images.length > 0 ? images : undefined;
@@ -287,6 +306,8 @@ export function useAgentChat() {
       const decoder = new TextDecoder();
       let buffer = "";
 
+      // SSE 解析：以空行分帧、以 data: 取载荷。
+      // 注意 buffer 必须保留"最后一个不完整帧"，否则跨 chunk 的事件会被截断丢弃。
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -348,6 +369,7 @@ export function useAgentChat() {
     }
   }, []);
 
+  /** 对外发送：历史取自当前消息列表（用 ref 读取，避免 useCallback 闭包过期） */
   const send = useCallback(
     (text: string, images?: string[]) => doSend(text, images, messagesRef.current),
     [doSend],
@@ -372,16 +394,25 @@ export function useAgentChat() {
   );
 
   /** 消息反馈（👍/👎），随会话持久化 */
+  /**
+   * 点赞/点踩。再次点击同一选项视为取消（toggle），
+   * 反馈随会话写进 localStorage，后续可用于统计"哪些问题回答得不好"。
+   */
   const rate = useCallback((assistantId: string, value: "up" | "down") => {
     setMessages((prev) =>
       prev.map((m) => (isAssistant(m) && m.id === assistantId ? { ...m, feedback: m.feedback === value ? undefined : value } : m)),
     );
   }, []);
 
+  /**
+   * 停止生成：abort 前端请求。服务端监听响应流 close 后会同步取消上游模型请求，
+   * 因此这里不是"只停界面"，而是真的停止计费。
+   */
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
+  /** 新对话：正在生成时忽略（避免把半截回答连同会话一起丢掉） */
   const reset = useCallback(() => {
     if (abortRef.current) return;
     createSession();

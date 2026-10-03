@@ -10,6 +10,12 @@ interface ChatInputProps {
   visionReady?: boolean;
 }
 
+/**
+ * 输入区：文本、图片、语音三种输入方式的统一入口。
+ *
+ * 体积与数量限制在这里和服务端各做一次（前端为了体验，服务端为了安全）——
+ * 前端被绕过时，服务端的 sanitizeImages 仍然会拦住非法输入。
+ */
 const MAX_IMAGES = 2;
 /** 原始文件上限：超限直接跳过；限内的照片会先在本地压缩再上传（见 utils/image.ts） */
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -33,12 +39,18 @@ export default function ChatInput({ running, onSend, onStop, visionReady }: Chat
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   };
 
+  /**
+   * 选择图片：逐张归一化（压缩 + HEIC 转码）后再入草稿区。
+   * 单张失败不影响其它图片，失败原因以 notice 形式就近提示。
+   */
   const pickImages = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
+    // 立即清空 input 的值：否则连续两次选择同一张图不会触发 change 事件
     e.target.value = "";
     setNotice("");
     let full = false;
     for (const f of files) {
+      // 部分浏览器对 HEIC 不给 MIME type，因此补一条扩展名判断，避免 iPhone 照片被直接丢掉
       const isImage = f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name);
       if (!isImage) continue;
       if (f.size > MAX_FILE_BYTES) {
@@ -71,6 +83,7 @@ export default function ChatInput({ running, onSend, onStop, visionReady }: Chat
     }
   };
 
+  /** 提交：清空文本、图片与提示，并把 textarea 高度复位到单行 */
   const submit = () => {
     const t = text.trim();
     if ((!t && images.length === 0) || running) return;
@@ -85,6 +98,7 @@ export default function ChatInput({ running, onSend, onStop, visionReady }: Chat
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // isComposing：中文输入法候选阶段的回车用于选词，不能当作发送
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();

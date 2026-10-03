@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { applyDisclaimer, moderateOutput, normalizeForScreen, redactSecrets, screenInput } from "../server/safety";
 
+/**
+ * 安全模块测试。
+ *
+ * 覆盖"拦截得住"与"不误伤"两侧：既要拦住变形绕过，也要保证正常问题放行。
+ * 输出侧单独测两件事——密钥遮蔽（防止把上下文里的敏感串回显给用户）
+ * 与高风险标记（模型复现违规内容时的兜底）。
+ */
 describe("输入侧安全过滤", () => {
   it("正常问题放行", () => {
     expect(screenInput("传智杯的报名截止时间是什么？").ok).toBe(true);
@@ -15,6 +22,7 @@ describe("输入侧安全过滤", () => {
     },
   );
 
+  // 这三条对应真实的绕过手法：加空格、插符号、写全角。归一化必须先于匹配，否则形同虚设
   it("归一化后仍能拦截变形写法（空格 / 符号 / 全角）", () => {
     expect(screenInput("赌 博 平 台 推荐").ok).toBe(false);
     expect(screenInput("赌*博 网站").ok).toBe(false);

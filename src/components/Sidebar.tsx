@@ -1,3 +1,9 @@
+/**
+ * 侧栏：会话管理 + 能力说明 + 知识库状态 + 知识域切换。
+ *
+ * 同一份代码承担两种形态：桌面端常驻（lg 及以上），移动端为抽屉。
+ * 通过 open/onClose 受控，父组件只管开关，侧栏不自己维护可见性。
+ */
 import type { StoredSession } from "../hooks/useAgentChat";
 
 interface SidebarProps {
@@ -39,6 +45,7 @@ const KB_TOPICS = [
   "推荐技术栈",
 ];
 
+/** 受控侧栏：open 只影响移动端（桌面端用 lg:static + lg:translate-x-0 强制常驻） */
 export default function Sidebar({
   sessions,
   activeId,
@@ -56,7 +63,7 @@ export default function Sidebar({
 }: SidebarProps) {
   return (
     <>
-      {/* 移动端遮罩 */}
+      {/* 移动端遮罩：点击任意处关闭抽屉，避免用户"进得去出不来" */}
       {open && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={onClose} aria-hidden />}
 
       <aside
@@ -93,6 +100,7 @@ export default function Sidebar({
         </div>
 
         <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2">
+          {/* 会话列表：标题来自首条用户消息，删除按钮 hover 才出现，避免误触 */}
           {sessions.map((s) => (
             <div
               key={s.id}
@@ -131,6 +139,7 @@ export default function Sidebar({
           ))}
         </div>
 
+        {/* 知识域切换：本作品"场景可迁移"的可视化入口——同一套 Agent，换语料即换场景 */}
         {domains && domains.length > 0 && (
           <div className="border-t border-slate-800 px-4 py-4">
             <div className="mb-2 text-xs font-medium text-slate-300">

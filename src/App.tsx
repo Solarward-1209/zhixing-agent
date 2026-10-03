@@ -4,6 +4,11 @@ import Sidebar from "./components/Sidebar";
 import ChatInput from "./components/ChatInput";
 import MessageView from "./components/MessageView";
 
+/**
+ * 空状态示例问题：刻意覆盖四种不同的 Agent 行为路径，
+ * 让评委/用户第一次点击就能看到"检索、计算、时间、天气"四类证据形态，
+ * 而不是把四个示例都做成同一种知识库问答。
+ */
 const SUGGESTIONS = [
   { icon: "🏆", title: "赛事咨询", text: "传智杯的报名截止时间是什么时候？评审标准是怎样的？" },
   { icon: "🧮", title: "精确计算", text: "帮我算一下 (128*46+372)/4 等于多少" },
@@ -11,6 +16,11 @@ const SUGGESTIONS = [
   { icon: "🌤️", title: "工具调用", text: "北京今天天气怎么样？" },
 ];
 
+/**
+ * 应用外壳：负责三件事——布局、移动端抽屉、把 hook 的能力分发给子组件。
+ * 业务逻辑（SSE、会话、重生成）全部在 useAgentChat 内，这里保持"薄壳"，
+ * 便于后续把布局换成路由或多面板而不牵动数据层。
+ */
 export default function App() {
   const {
     messages,
@@ -28,14 +38,18 @@ export default function App() {
     switchSession,
     removeSession,
   } = useAgentChat();
+  // 移动端抽屉开关：桌面端侧栏常驻，这个状态只影响 <lg 的断点
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    // 新消息/流式 token 到达时贴底。这里用直接赋值而不是 smooth 滚动：
+    // 流式阶段每帧都会触发，平滑动画会互相打断并造成抖动。
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  /** 统一入口：发送前先收起移动端抽屉，避免答案被抽屉遮挡 */
   const handleSend = (text: string, images?: string[]) => {
     setDrawerOpen(false);
     void send(text, images);
@@ -95,6 +109,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             {health && (
               <>
+                {/* 图片理解可用性：让用户（与评委）一眼看出多模态是否真的启用，而不是点了才发现没配 Key */}
                 <span
                   className={
                     "hidden rounded-full px-2.5 py-1 text-[11px] font-medium sm:inline " +
@@ -149,6 +164,7 @@ export default function App() {
   );
 }
 
+/** 空状态：承担"能力说明 + 上手引导"两个职责，降低首次使用门槛 */
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex flex-col items-center pt-10 text-center lg:pt-16">

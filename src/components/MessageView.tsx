@@ -10,7 +10,16 @@ interface MessageViewProps {
   onFeedback?: (assistantId: string, value: "up" | "down") => void;
 }
 
-/** 单条消息渲染：计划时间线 + 工具卡片 + Markdown 流式正文 + 来源引用 + 操作栏 */
+/**
+ * 单条消息渲染。
+ *
+ * 渲染顺序刻意与"Agent 实际做事顺序"一致：
+ * 计划时间线 → 阶段提示 → 工具卡片 → 正文 → 错误 → 引用来源 → 操作栏。
+ * 用户自上而下阅读，就等于回放了一遍 Agent 的推理与取证过程。
+ *
+ * 组件用 memo 包裹：只有正在流式更新的那条消息会真正重渲染，
+ * 历史消息保持引用不变直接跳过，长会话下滚动与输入才能保持跟手。
+ */
 function MessageViewInner({ message, onRegenerate, onFeedback }: MessageViewProps) {
   if (message.role === "user") {
     return (
@@ -37,6 +46,13 @@ function MessageViewInner({ message, onRegenerate, onFeedback }: MessageViewProp
   return <AssistantView message={message} onRegenerate={onRegenerate} onFeedback={onFeedback} />;
 }
 
+/**
+ * 助手消息主体。
+ *
+ * 这里把"服务端事件"翻译成"界面语义"的最后一公里：
+ * 计划状态只认 pending/running/done 三态，工具卡片只认 display 类型，
+ * 因此新增服务端事件时，改动被限制在本文件与协议映射处。
+ */
 function AssistantView({
   message: m,
   onRegenerate,
@@ -56,6 +72,7 @@ function AssistantView({
         知
       </div>
       <div className="min-w-0 max-w-[85%] flex-1 space-y-2.5">
+        {/* 计划时间线是"过程可信"的主视觉，永远排在最前面 */}
         {m.plan && <PlanTimeline message={m} />}
         {m.stage && streaming && !m.content && (
           <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -116,7 +133,10 @@ function AssistantView({
   );
 }
 
-/** 回答下方的操作栏：复制 / 重新生成 / 点赞点踩 */
+/**
+ * 回答下方的操作栏：复制 / 重新生成 / 朗读 / 点赞点踩。
+ * 仅在流式结束后出现，避免用户复制到半截内容或对未完成的回答打分。
+ */
 function MessageActions({
   content,
   feedback,
@@ -182,6 +202,11 @@ function MessageActions({
   );
 }
 
+/**
+ * 执行计划时间线。
+ * 三种状态的视觉语义：done=绿勾、running=转圈、pending=灰色序号。
+ * 服务端保证"同一时刻至多一个 running"，因此这里不需要额外的并发处理逻辑。
+ */
 function PlanTimeline({ message: m }: { message: AssistantMessage }) {
   return (
     <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-4 py-3">
@@ -220,6 +245,10 @@ function PlanTimeline({ message: m }: { message: AssistantMessage }) {
   );
 }
 
+/**
+ * 工具结果卡片：由 tool_result.display 决定形态（生成式 UI 的最简形式）。
+ * 未收到 result 时显示调用中；收到后按类型渲染为计算 / 天气 / 知识库 / 图片 / 通用卡片。
+ */
 function ToolCard({
   tool,
 }: {
@@ -250,6 +279,7 @@ function ToolCard({
     );
   }
   if (r.display === "card-weather") {
+    // 数据来源必须如实标注：实时数据来自 Open-Meteo，离线样例只在演示模式下出现
     const isMock = r.data?.isMock === true;
     return (
       <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-900/70 px-4 py-3">

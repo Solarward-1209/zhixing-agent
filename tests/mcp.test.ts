@@ -5,8 +5,13 @@ import { getMcpServers, listMcpTools, mcpToolName, parseMcpToolName } from "../s
 import { executeTool, listToolSchemas, toolSchemas } from "../server/tools";
 
 /**
- * 用一个真实（本地）HTTP 服务模拟 MCP Server，验证：
- * 握手 → 工具动态发现 → 工具调用 的完整链路，而不是 mock 掉函数。
+ * MCP 客户端测试。
+ *
+ * 刻意**不 mock 掉函数**，而是起一个真实的本地 HTTP 服务实现 JSON-RPC 握手：
+ * 因为 MCP 的风险恰恰在协议细节（会话头、notification 的 202、SSE 响应体），
+ * mock 掉这些等于把最该验证的部分绕过去了。
+ * 除主链路外，还覆盖未配置、非法配置、服务不可达三类降级——
+ * 它们决定了 MCP 出问题时会不会连累主问答流程。
  */
 let server: http.Server;
 let url = "";

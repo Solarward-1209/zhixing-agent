@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { domains, isRelevant, knowledgeSize, relevanceLabel, retrieve, retrievalMode, termCoverage, toSources } from "../server/rag";
 
+/**
+ * 检索层测试。
+ *
+ * 两条主线：
+ * 1. 召回质量——每个断言都贴着真实用户问法，验证"该召回的文档排在第一"；
+ * 2. 契约稳定——分数区间、排序、来源字段，这些是前端与评测都依赖的接口约定。
+ * 测试全部离线：未配置 Embedding 时走 BM25，属于预期内的降级路径。
+ */
 describe("知识库混合检索（BM25 + 可插拔向量）", () => {
   it("组别问题召回组别规则文档", async () => {
     const r = await retrieve("B组学生可以报名什么组别？", 3);

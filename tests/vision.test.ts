@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../shared/protocol";
 import { buildVisionMessages, describeImage, MAX_IMAGES, runVisionPath, sanitizeImages } from "../server/vision";
 
+/**
+ * 多模态通道测试。
+ *
+ * 重点是"三种状态各自给出正确的用户反馈"：
+ * 未配置 → 可执行的配置引导；配置了但失败 → 区分原因的排查建议；输入非法 → 直接拒绝。
+ * 早期版本依赖开发者本机 .env 是否配了 Key，导致同一份代码在不同机器上结论不同，
+ * 因此这里统一用 vi.stubEnv 显式声明环境，保证测试可复现。
+ */
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
 /** 让"未配置视觉模型"的用例不再依赖开发者本机 .env */
