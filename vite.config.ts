@@ -23,4 +23,17 @@ function agentApiPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [react(), agentApiPlugin()],
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    // 首屏性能：把体积最大且低频变化的两块依赖拆成独立 chunk，利于浏览器长期缓存
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          markdown: ["react-markdown", "remark-gfm"],
+        },
+      },
+    },
+  },
 });

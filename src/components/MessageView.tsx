@@ -1,10 +1,16 @@
-import { memo } from "react";
+import { memo, useDeferredValue, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { STAGE_LABEL, type AssistantMessage, type ChatMessage } from "../ui-types";
 
-/** 单条消息渲染：计划时间线 + 工具卡片 + Markdown 流式正文 + 来源引用 */
-function MessageViewInner({ message }: { message: ChatMessage }) {
+interface MessageViewProps {
+  message: ChatMessage;
+  onRegenerate?: (assistantId: string) => void;
+  onFeedback?: (assistantId: string, value: "up" | "down") => void;
+}
+
+/** 单条消息渲染：计划时间线 + 工具卡片 + Markdown 流式正文 + 来源引用 + 操作栏 */
+function MessageViewInner({ message, onRegenerate, onFeedback }: MessageViewProps) {
   if (message.role === "user") {
     return (
       <div className="flex animate-fade-in-up justify-end">
@@ -16,6 +22,7 @@ function MessageViewInner({ message }: { message: ChatMessage }) {
                   key={i}
                   src={src}
                   alt={`用户发送的图片 ${i + 1}`}
+                  loading="lazy"
                   className="max-h-40 rounded-lg border border-white/20 object-cover"
                 />
               ))}
@@ -26,10 +33,22 @@ function MessageViewInner({ message }: { message: ChatMessage }) {
       </div>
     );
   }
-  return <AssistantView message={message} />;
+  return <AssistantView message={message} onRegenerate={onRegenerate} onFeedback={onFeedback} />;
 }
 
-function AssistantView({ message: m }: { message: AssistantMessage }) {
+function AssistantView({
+  message: m,
+  onRegenerate,
+  onFeedback,
+}: {
+  message: AssistantMessage;
+  onRegenerate?: (assistantId: string) => void;
+  onFeedback?: (assistantId: string, value: "up" | "down") => void;
+}) {
+  // 流式期间把 Markdown 解析降级为"可延迟"优先级，保证输入与滚动的即时响应
+  const deferredContent = useDeferredValue(m.content);
+  const streaming = m.streaming;
+
   return (
     <div className="flex animate-fade-in-up items-start gap-3">
       <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 text-sm font-bold text-white">
@@ -37,7 +56,7 @@ function AssistantView({ message: m }: { message: AssistantMessage }) {
       </div>
       <div className="min-w-0 max-w-[85%] flex-1 space-y-2.5">
         {m.plan && <PlanTimeline message={m} />}
-        {m.stage && m.streaming && !m.content && (
+        {m.stage && streaming && !m.content && (
           <div className="flex items-center gap-2 text-sm text-slate-400">
             <span className="flex gap-1">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:0ms]" />
@@ -50,11 +69,11 @@ function AssistantView({ message: m }: { message: AssistantMessage }) {
         {m.tools.map((t) => (
           <ToolCard key={t.callId} tool={t} />
         ))}
-        {(m.content || !m.streaming) && (
+        {(m.content || !streaming) && (
           <div className="rounded-2xl rounded-tl-md border border-slate-700/60 bg-slate-800/60 px-4 py-3 shadow-lg shadow-slate-950/30">
             <div className="md-body">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-              {m.streaming && m.content && <span className="stream-cursor" />}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{deferredContent}</ReactMarkdown>
+              {streaming && m.content && <span className="stream-cursor" />}
             </div>
           </div>
         )}
@@ -77,6 +96,14 @@ function AssistantView({ message: m }: { message: AssistantMessage }) {
             ))}
           </div>
         )}
+        {!streaming && m.content && (m.meta || onRegenerate) && (
+          <MessageActions
+            content={m.content}
+            feedback={m.feedback}
+            onRegenerate={() => onRegenerate?.(m.id)}
+            onFeedback={(v) => onFeedback?.(m.id, v)}
+          />
+        )}
         {m.meta && (
           <div className="text-[11px] text-slate-500">
             {m.meta.mode === "demo" ? "演示模式（本地流水线，未调用大模型）" : `模型：${m.meta.model ?? "LLM"}`}
@@ -84,6 +111,61 @@ function AssistantView({ message: m }: { message: AssistantMessage }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** 回答下方的操作栏：复制 / 重新生成 / 点赞点踩 */
+function MessageActions({
+  content,
+  feedback,
+  onRegenerate,
+  onFeedback,
+}: {
+  content: string;
+  feedback?: "up" | "down";
+  onRegenerate: () => void;
+  onFeedback: (value: "up" | "down") => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const btn =
+    "rounded-lg border border-slate-700/70 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200";
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button type="button" className={btn} onClick={() => void copy()} aria-label="复制回答">
+        {copied ? "✓ 已复制" : "📋 复制"}
+      </button>
+      <button type="button" className={btn} onClick={onRegenerate} aria-label="重新生成">
+        🔄 重新生成
+      </button>
+      <button
+        type="button"
+        className={btn + (feedback === "up" ? " border-emerald-500/60 text-emerald-300" : "")}
+        onClick={() => onFeedback("up")}
+        aria-label="有帮助"
+      >
+        👍 有帮助
+      </button>
+      <button
+        type="button"
+        className={btn + (feedback === "down" ? " border-red-500/60 text-red-300" : "")}
+        onClick={() => onFeedback("down")}
+        aria-label="需改进"
+      >
+        👎 需改进
+      </button>
     </div>
   );
 }
@@ -126,7 +208,15 @@ function PlanTimeline({ message: m }: { message: AssistantMessage }) {
   );
 }
 
-function ToolCard({ tool }: { tool: { callId: string; name: string; result?: { summary: string; display?: string; data?: Record<string, unknown> } } }) {
+function ToolCard({
+  tool,
+}: {
+  tool: {
+    callId: string;
+    name: string;
+    result?: { summary: string; display?: string; data?: Record<string, unknown> };
+  };
+}) {
   const r = tool.result;
   if (!r) {
     return (
@@ -148,10 +238,13 @@ function ToolCard({ tool }: { tool: { callId: string; name: string; result?: { s
     );
   }
   if (r.display === "card-weather") {
+    const isMock = r.data?.isMock === true;
     return (
       <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-900/70 px-4 py-3">
         <div>
-          <div className="text-xs text-slate-400">🌤️ 天气工具（模拟数据）</div>
+          <div className="text-xs text-slate-400">
+            🌤️ 天气工具 · {isMock ? "离线样例数据" : "实时数据（Open-Meteo）"}
+          </div>
           <div className="mt-0.5 text-[15px] font-medium text-slate-100">
             {String(r.data?.city ?? "")} · {String(r.data?.weather ?? "")}
           </div>
@@ -167,7 +260,18 @@ function ToolCard({ tool }: { tool: { callId: string; name: string; result?: { s
     return (
       <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3.5 py-2.5 text-[13px] text-cyan-100">
         📚 <span className="font-mono text-cyan-300">query_knowledge_base</span> · {r.summary}
-        {r.data?.topTitle ? <span className="ml-1 text-cyan-200/80">最相关：《{String(r.data.topTitle)}》</span> : null}
+      </div>
+    );
+  }
+  if (r.display === "card-vision") {
+    return (
+      <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-3.5 py-2.5 text-[13px] text-violet-100">
+        📷 <span className="font-mono text-violet-300">understand_image</span> · 已解析{" "}
+        {String(r.data?.imageCount ?? 1)} 张图片
+        <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12px] text-violet-200/80">
+          {String(r.data?.description ?? r.summary).slice(0, 200)}
+          {String(r.data?.description ?? "").length > 200 ? "…" : ""}
+        </div>
       </div>
     );
   }

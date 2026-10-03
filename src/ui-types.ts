@@ -34,6 +34,8 @@ export interface AssistantMessage {
   sources: KbSource[];
   error?: string;
   meta?: { mode: "demo" | "ai"; model?: string };
+  /** 用户反馈（👍/👎），随会话持久化，可用于后续效果评估 */
+  feedback?: "up" | "down";
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;

@@ -5,13 +5,15 @@ interface ChatInputProps {
   running: boolean;
   onSend: (text: string, images?: string[]) => void;
   onStop: () => void;
+  /** 是否已配置视觉模型；false 时给出明确提示，但不阻止用户先选图 */
+  visionReady?: boolean;
 }
 
 const MAX_IMAGES = 2;
 /** 原始文件上限：超限直接跳过；限内的照片会先在本地压缩再上传（见 utils/image.ts） */
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
-export default function ChatInput({ running, onSend, onStop }: ChatInputProps) {
+export default function ChatInput({ running, onSend, onStop, visionReady }: ChatInputProps) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
@@ -108,7 +110,7 @@ export default function ChatInput({ running, onSend, onStop }: ChatInputProps) {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={running}
-            title="发送图片（需配置视觉模型）"
+            title={visionReady === false ? "当前未配置视觉模型（VISION_API_KEY），仍可先选图" : "发送图片"}
             className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-700 text-lg text-slate-300 transition-colors hover:border-indigo-400 hover:text-indigo-200 disabled:opacity-40"
           >
             📷

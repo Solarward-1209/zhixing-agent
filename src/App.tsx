@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAgentChat } from "./hooks/useAgentChat";
 import Sidebar from "./components/Sidebar";
 import ChatInput from "./components/ChatInput";
@@ -12,8 +12,21 @@ const SUGGESTIONS = [
 ];
 
 export default function App() {
-  const { messages, running, health, sessions, activeId, send, stop, reset, switchSession, removeSession } =
-    useAgentChat();
+  const {
+    messages,
+    running,
+    health,
+    sessions,
+    activeId,
+    send,
+    stop,
+    reset,
+    regenerate,
+    rate,
+    switchSession,
+    removeSession,
+  } = useAgentChat();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -21,21 +34,44 @@ export default function App() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  const handleSend = (text: string, images?: string[]) => {
+    setDrawerOpen(false);
+    void send(text, images);
+  };
+
   return (
     <div className="flex h-full">
       <Sidebar
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
         sessions={sessions}
         activeId={activeId}
-        onSwitch={switchSession}
+        onSwitch={(id) => {
+          switchSession(id);
+          setDrawerOpen(false);
+        }}
         onDelete={removeSession}
-        onNew={reset}
-        onPickSuggestion={(t) => void send(t)}
+        onNew={() => {
+          reset();
+          setDrawerOpen(false);
+        }}
+        onPickSuggestion={(t) => handleSend(t)}
+        knowledgeChunks={health?.knowledgeChunks}
+        visionReady={health?.vision === true}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
         {/* 顶栏 */}
         <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/70 px-4 py-3 backdrop-blur lg:px-6">
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="打开会话列表"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white lg:hidden"
+            >
+              ☰
+            </button>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 text-sm font-bold text-white lg:hidden">
               知
             </div>
@@ -46,16 +82,29 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             {health && (
-              <span
-                className={
-                  "rounded-full px-2.5 py-1 text-[11px] font-medium " +
-                  (health.mode === "ai"
-                    ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                    : "border border-amber-500/40 bg-amber-500/10 text-amber-300")
-                }
-              >
-                {health.mode === "ai" ? `已接入 ${health.model ?? "大模型"}` : "演示模式（未配置 Key）"}
-              </span>
+              <>
+                <span
+                  className={
+                    "hidden rounded-full px-2.5 py-1 text-[11px] font-medium sm:inline " +
+                    (health.vision
+                      ? "border border-violet-500/40 bg-violet-500/10 text-violet-300"
+                      : "border border-slate-700 bg-slate-800/60 text-slate-400")
+                  }
+                  title={health.vision ? "图片理解已启用" : "未配置 VISION_API_KEY，图片理解不可用"}
+                >
+                  {health.vision ? "📷 图片理解已启用" : "📷 图片理解未配置"}
+                </span>
+                <span
+                  className={
+                    "rounded-full px-2.5 py-1 text-[11px] font-medium " +
+                    (health.mode === "ai"
+                      ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                      : "border border-amber-500/40 bg-amber-500/10 text-amber-300")
+                  }
+                >
+                  {health.mode === "ai" ? `已接入 ${health.model ?? "大模型"}` : "演示模式（未配置 Key）"}
+                </span>
+              </>
             )}
             {messages.length > 0 && (
               <button
@@ -72,15 +121,17 @@ export default function App() {
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 lg:px-6">
           <div className="mx-auto max-w-3xl space-y-6">
             {messages.length === 0 ? (
-              <EmptyState onPick={(t) => void send(t)} />
+              <EmptyState onPick={handleSend} />
             ) : (
-              messages.map((m) => <MessageView key={m.id} message={m} />)
+              messages.map((m) => (
+                <MessageView key={m.id} message={m} onRegenerate={regenerate} onFeedback={rate} />
+              ))
             )}
           </div>
         </div>
 
         {/* 输入区 */}
-        <ChatInput running={running} onSend={(t, imgs) => void send(t, imgs)} onStop={stop} />
+        <ChatInput running={running} onSend={handleSend} onStop={stop} visionReady={health?.vision} />
       </main>
     </div>
   );
