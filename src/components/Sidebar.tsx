@@ -14,6 +14,11 @@ interface SidebarProps {
   knowledgeChunks?: number;
   /** 是否已配置视觉模型 */
   visionReady?: boolean;
+  /** 可用知识域（来自 /api/health） */
+  domains?: Array<{ id: string; name: string; description: string; chunks: number }>;
+  /** 当前知识域 id */
+  domain?: string;
+  onDomainChange?: (id: string) => void;
 }
 
 const CAPABILITIES = [
@@ -21,6 +26,7 @@ const CAPABILITIES = [
   { icon: "📚", title: "RAG 混合检索", desc: "BM25 + 向量融合，回答标注引用来源" },
   { icon: "🛠️", title: "工具调用", desc: "计算 / 时间 / 实时天气 / 图片理解，JSON Schema 契约" },
   { icon: "📷", title: "多模态理解", desc: "图片进入 Agent 主循环，可与检索、工具协同" },
+  { icon: "🔊", title: "语音交互", desc: "Web Speech API 语音输入与回答朗读，无第三方依赖" },
   { icon: "🛡️", title: "安全兜底", desc: "输入过滤、输出治理、优雅降级" },
 ];
 
@@ -44,6 +50,9 @@ export default function Sidebar({
   onClose,
   knowledgeChunks,
   visionReady,
+  domains,
+  domain,
+  onDomainChange,
 }: SidebarProps) {
   return (
     <>
@@ -122,10 +131,35 @@ export default function Sidebar({
           ))}
         </div>
 
+        {domains && domains.length > 0 && (
+          <div className="border-t border-slate-800 px-4 py-4">
+            <div className="mb-2 text-xs font-medium text-slate-300">
+              知识域 <span className="text-slate-500">（同一套 Agent，切换语料即换场景）</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[{ id: "all", name: "全部", chunks: knowledgeChunks ?? 0, description: "跨域检索" }, ...domains].map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => onDomainChange?.(d.id)}
+                  title={d.description}
+                  className={
+                    "rounded-full border px-2.5 py-1 text-[11px] transition-colors " +
+                    (domain === d.id
+                      ? "border-indigo-400 bg-indigo-500/20 text-indigo-100"
+                      : "border-slate-700 text-slate-300 hover:border-indigo-400 hover:text-indigo-200")
+                  }
+                >
+                  {d.name} · {d.chunks}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="border-t border-slate-800 px-4 py-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            传智杯全赛道知识库{typeof knowledgeChunks === "number" ? ` · ${knowledgeChunks} 篇` : ""}
+            知识库合计{typeof knowledgeChunks === "number" ? ` · ${knowledgeChunks} 篇` : ""}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {KB_TOPICS.map((t) => (

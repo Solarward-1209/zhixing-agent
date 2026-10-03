@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { normalizeImage } from "../utils/image";
+import { useSpeechInput } from "../hooks/useSpeech";
 
 interface ChatInputProps {
   running: boolean;
@@ -19,6 +20,11 @@ export default function ChatInput({ running, onSend, onStop, visionReady }: Chat
   const [notice, setNotice] = useState("");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // 语音输入：识别结果直接追加到输入框，边说边改
+  const speech = useSpeechInput({
+    onFinal: (t) => setText((prev) => (prev ? `${prev}${t}` : t)),
+  });
 
   const autoResize = () => {
     const el = taRef.current;
@@ -105,8 +111,30 @@ export default function ChatInput({ running, onSend, onStop, visionReady }: Chat
             {notice && <span className="text-xs text-amber-300">{notice}</span>}
           </div>
         )}
+        {(speech.interim || speech.error) && (
+          <div className="mb-1.5 text-xs text-slate-400">
+            {speech.error ? <span className="text-amber-300">{speech.error}</span> : <span>🎙️ {speech.interim}</span>}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={pickImages} />
+          {speech.supported && (
+            <button
+              onClick={speech.toggle}
+              disabled={running}
+              type="button"
+              title={speech.listening ? "停止语音输入" : "语音输入（Web Speech API）"}
+              aria-label={speech.listening ? "停止语音输入" : "开始语音输入"}
+              className={
+                "flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border text-lg transition-colors disabled:opacity-40 " +
+                (speech.listening
+                  ? "border-red-500/60 bg-red-500/10 text-red-200"
+                  : "border-slate-700 text-slate-300 hover:border-indigo-400 hover:text-indigo-200")
+              }
+            >
+              {speech.listening ? "⏺" : "🎙️"}
+            </button>
+          )}
           <button
             onClick={() => fileRef.current?.click()}
             disabled={running}

@@ -18,6 +18,8 @@ export default function App() {
     health,
     sessions,
     activeId,
+    domain,
+    setDomain,
     send,
     stop,
     reset,
@@ -58,6 +60,9 @@ export default function App() {
         onPickSuggestion={(t) => handleSend(t)}
         knowledgeChunks={health?.knowledgeChunks}
         visionReady={health?.vision === true}
+        domains={health?.domains}
+        domain={domain}
+        onDomainChange={setDomain}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -77,7 +82,14 @@ export default function App() {
             </div>
             <div>
               <div className="text-sm font-semibold text-white">知行 Agent · AI 智能助手</div>
-              <div className="text-[11px] text-slate-400">会规划 · 会查证 · 会使用工具</div>
+              <div className="text-[11px] text-slate-400">
+                会规划 · 会查证 · 会使用工具
+                {health?.domains && health.domains.length > 0 && (
+                  <span className="ml-2 text-slate-500">
+                    当前知识域：{domain === "all" ? "全部" : (health.domains.find((d) => d.id === domain)?.name ?? domain)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">

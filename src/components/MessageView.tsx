@@ -2,6 +2,7 @@ import { memo, useDeferredValue, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { STAGE_LABEL, type AssistantMessage, type ChatMessage } from "../ui-types";
+import { useSpeechOutput } from "../hooks/useSpeech";
 
 interface MessageViewProps {
   message: ChatMessage;
@@ -128,6 +129,7 @@ function MessageActions({
   onFeedback: (value: "up" | "down") => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const tts = useSpeechOutput();
 
   const copy = async () => {
     try {
@@ -150,6 +152,16 @@ function MessageActions({
       <button type="button" className={btn} onClick={onRegenerate} aria-label="重新生成">
         🔄 重新生成
       </button>
+      {tts.supported && (
+        <button
+          type="button"
+          className={btn + (tts.speaking ? " border-cyan-500/60 text-cyan-300" : "")}
+          onClick={() => (tts.speaking ? tts.stop() : tts.speak(content))}
+          aria-label={tts.speaking ? "停止朗读" : "朗读回答"}
+        >
+          {tts.speaking ? "⏹ 停止朗读" : "🔊 朗读"}
+        </button>
+      )}
       <button
         type="button"
         className={btn + (feedback === "up" ? " border-emerald-500/60 text-emerald-300" : "")}

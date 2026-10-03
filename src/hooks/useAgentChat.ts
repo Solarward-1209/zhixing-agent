@@ -64,7 +64,11 @@ export function useAgentChat() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => sessions[0].messages);
   const [running, setRunning] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
+  const [domain, setDomain] = useState<string>("all");
   const abortRef = useRef<AbortController | null>(null);
+  // 供 doSend / regenerate 读取最新知识域，避免闭包过期
+  const domainRef = useRef(domain);
+  domainRef.current = domain;
 
   // 供 regenerate 等回调读取最新消息，避免闭包过期
   const messagesRef = useRef(messages);
@@ -273,7 +277,7 @@ export function useAgentChat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, history: historyPayload, images: imgs }),
+        body: JSON.stringify({ message: trimmed, history: historyPayload, images: imgs, domain: domainRef.current }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -389,6 +393,8 @@ export function useAgentChat() {
     health,
     sessions,
     activeId,
+    domain,
+    setDomain,
     send,
     stop,
     reset,
