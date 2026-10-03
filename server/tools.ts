@@ -3,6 +3,7 @@ import type { ToolSchema } from "./llm";
 import { fetchWithRetry } from "./llm";
 import { loadProjectEnv } from "./env";
 import { describeImage, hasVisionConfig } from "./vision";
+import { listMcpTools, toToolSchema, parseMcpToolName, callMcpTool } from "./mcp";
 
 /**
  * MCP 风格的工具注册表：每个工具用统一的 JSON Schema 描述契约，
@@ -396,8 +397,23 @@ const understandImage: RegisteredTool = {
 
 export const toolRegistry: RegisteredTool[] = [calculate, getCurrentTime, getWeather, understandImage];
 
+/** 内置工具的 Schema（同步、无网络依赖） */
 export function toolSchemas(): ToolSchema[] {
   return toolRegistry.map((t) => t.schema);
+}
+
+/**
+ * 完整工具表 = 内置工具 + 动态发现的 MCP 工具。
+ * MCP 未配置或发现失败时自动退化为内置工具，绝不阻塞主流程。
+ */
+export async function listToolSchemas(options: { signal?: AbortSignal } = {}): Promise<ToolSchema[]> {
+  const builtin = toolSchemas();
+  try {
+    const mcpTools = await listMcpTools({ signal: options.signal });
+    return [...builtin, ...mcpTools.map(toToolSchema)];
+  } catch {
+    return builtin;
+  }
 }
 
 export async function executeTool(
@@ -405,6 +421,17 @@ export async function executeTool(
   args: Record<string, unknown>,
   ctx: ToolContext = {},
 ): Promise<ToolResultPayload> {
+  // MCP 动态工具：mcp__<server>__<tool>
+  const mcpRef = parseMcpToolName(name);
+  if (mcpRef) {
+    const res = await callMcpTool(mcpRef.server, mcpRef.tool, args, { signal: ctx.signal });
+    return {
+      summary: res.text,
+      data: { source: "mcp", server: mcpRef.server, tool: mcpRef.tool, isError: res.isError },
+      display: "plain",
+    };
+  }
+
   const tool = toolRegistry.find((t) => t.schema.function.name === name);
   if (!tool) {
     return { summary: `未知工具：${name}`, display: "plain" };
