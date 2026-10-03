@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRelevant, knowledgeSize, relevanceLabel, retrieve, retrievalMode, termCoverage, toSources } from "../server/rag";
+import { domains, isRelevant, knowledgeSize, relevanceLabel, retrieve, retrievalMode, termCoverage, toSources } from "../server/rag";
 
 describe("知识库混合检索（BM25 + 可插拔向量）", () => {
   it("组别问题召回组别规则文档", async () => {
@@ -70,6 +70,41 @@ describe("知识库混合检索（BM25 + 可插拔向量）", () => {
   });
 
   it("知识库规模可被 /api/health 读取", () => {
-    expect(knowledgeSize()).toBeGreaterThanOrEqual(30);
+    expect(knowledgeSize()).toBeGreaterThanOrEqual(45);
+  });
+});
+
+describe("多知识域检索（场景可迁移）", () => {
+  it("至少挂载两个知识域，且各自有独立语料", () => {
+    const list = domains();
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    const ids = list.map((d) => d.id);
+    expect(ids).toContain("competition");
+    expect(ids).toContain("campus");
+    for (const d of list) expect(d.chunks).toBeGreaterThan(0);
+  });
+
+  it("限定校园域时只召回校园语料", async () => {
+    const r = await retrieve("选课流程与退改选规则", 3, { domain: "campus" });
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.every((item) => item.chunk.domain === "campus")).toBe(true);
+    expect(r[0].chunk.id).toMatch(/^campus-/);
+  });
+
+  it("限定赛事域时只召回赛事语料", async () => {
+    const r = await retrieve("评审标准与权重", 3, { domain: "competition" });
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.every((item) => item.chunk.domain === "competition")).toBe(true);
+    expect(r[0].chunk.id).toMatch(/^kb-/);
+  });
+
+  it("跨域检索（all）可同时覆盖两个域", async () => {
+    const campus = await retrieve("保研推免流程", 3);
+    expect(campus[0].chunk.domain).toBe("campus");
+  });
+
+  it("相关度标签会标注所属知识域", async () => {
+    const r = await retrieve("学分与毕业要求", 2, { domain: "campus" });
+    expect(relevanceLabel("学分与毕业要求", r)).toContain("校园学习");
   });
 });

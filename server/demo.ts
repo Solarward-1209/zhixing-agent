@@ -64,7 +64,13 @@ function extractSentences(text: string, query: string, max: number): string[] {
   return parts.slice(0, max).map((s) => (s.length > 90 ? s.slice(0, 90) + "…" : s));
 }
 
-export async function runDemoAgent(userText: string, emit: Emit): Promise<void> {
+export interface DemoOptions {
+  /** 知识域：competition / campus / all */
+  domain?: string;
+}
+
+export async function runDemoAgent(userText: string, emit: Emit, options: DemoOptions = {}): Promise<void> {
+  const domain = options.domain ?? "all";
   // 1. 安全过滤
   emit({ type: "status", stage: "understanding" });
   const check = screenInput(userText);
@@ -105,7 +111,7 @@ export async function runDemoAgent(userText: string, emit: Emit): Promise<void> 
   // 3. RAG 检索（真实执行）
   if (intent.kinds.includes("kb")) {
     emit({ type: "status", stage: "retrieving" });
-    const results = await retrieve(userText, 3);
+    const results = await retrieve(userText, 3, { domain });
     await runStep(relevanceLabel(userText, results));
 
     if (isRelevant(userText, results)) {
