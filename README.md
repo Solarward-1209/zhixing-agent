@@ -1,7 +1,7 @@
 # 知行 Agent —— 会规划、会查证、会使用工具的 AI 智能助手
 
 > 传智杯 · AI WEB 网页开发挑战赛 参赛作品
-> 赛道方向：**AI Agent 智能助手**（自主规划 · 工具调用 · 多轮对话 · RAG 查证 · 多模态理解）
+> 赛道方向：**AI Agent 智能助手**（自主规划 · 工具调用 · MCP 动态工具 · 多知识域 RAG · 多模态 · 语音交互）
 >
 > [![CI](https://github.com/Solarward-1209/zhixing-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Solarward-1209/zhixing-agent/actions/workflows/ci.yml)
 
@@ -12,8 +12,11 @@
 | 特性 | 说明 |
 |---|---|
 | 🗺️ 执行计划与真实执行严格对应 | 每个问题拆解为 2~5 步计划；**每一步的状态由真实执行动作驱动**（发起检索 / 调用某个工具 → 点亮对应步骤），不做"假进度" |
-| 📚 RAG 混合检索 | BM25（常驻）+ 向量检索（可插拔）融合，内置传智杯全赛道知识库 31 篇，引用编号 + 来源卡片；相关度以**词项覆盖率**如实展示，而非恒定的 1.00 |
+| 📚 RAG 多知识域混合检索 | BM25（域内独立统计）+ 向量检索（可插拔）融合，内置**双知识域 46 篇**（赛事备赛 31 + 校园学习 15，可一键切换），引用编号 + 来源卡片；相关度以**词项覆盖率**如实展示，而非恒定的 1.00 |
 | 🛠️ 工具注册表（JSON Schema 契约） | calculate 精确计算 / get_current_time 时间 / **get_weather 真实天气（Open-Meteo，免 Key）** / understand_image 图片理解 |
+| 🔌 标准 MCP 集成 | 实现 MCP Streamable HTTP 的 initialize / tools/list / tools/call，远端工具**动态发现**并注册进同一张工具表；未配置或不可达时静默降级 |
+| 🌐 多知识域（场景可迁移） | 同一套 Agent 挂载不同语料即换场景：赛事备赛 ⇄ 校园学习；新增场景只需一个 JSON + 一条登记 |
+| 🔊 语音交互 | Web Speech API 语音输入与回答朗读，无第三方依赖，浏览器不支持时优雅降级 |
 | 📷 多模态融入主循环 | 图片不再走旁路：uploaded 图片由 Agent **自主调用 understand_image 工具**，其结果与 RAG、其它工具一起进入最终回答 |
 | ⚡ 流式输出 | SSE 事件流推送 token，按帧批处理渲染，打字机效果流畅 |
 | 🧠 思考状态可视化 | 理解 → 规划 → 检索 → 调用工具 → 生成回答，阶段文案与真实阶段一致 |
@@ -28,7 +31,8 @@
 ```
 ┌──────────────────────── 浏览器（React 18 + Vite + Tailwind CSS）────────────────────────┐
 │  App ─ useAgentChat(SSE 客户端 + 按帧节流 + 多会话) ─ MessageView(计划时间线/工具卡片/   │
-│         Markdown 流式/来源引用/复制·重生成·反馈)                                        │
+│         Markdown 流式/来源引用/复制·重生成·朗读·反馈)                                   │
+│      └ useSpeech(Web Speech API 语音输入 / TTS)                                          │
 └──────────────────────────────────────────┬──────────────────────────────────────────────┘
                                            │ POST /api/chat (SSE)   GET /api/health
 ┌──────────────────────────────────────────┴──────────────────────────────────────────────┐
@@ -36,7 +40,8 @@
 │    理解 → 规划(LLM) → 行动(图片理解 / RAG 检索 / 工具循环≤3轮) → 生成(LLM 流式 + 输出治理) │
 │    ├── llm.ts       OpenAI 兼容客户端（超时 30s · 指数退避重试 · 备用模型 · AbortSignal） │
 │    ├── rag.ts       混合检索：BM25(k1=1.5,b=0.75，标题加权) + Embedder 适配器(0.45/0.55)  │
-│    ├── tools.ts     工具注册表（calculate / time / weather / understand_image）           │
+│    ├── tools.ts     工具注册表（calculate / time / weather / understand_image + MCP）     │
+│    ├── mcp.ts       标准 MCP 客户端（initialize / tools/list / tools/call，动态工具发现）  │
 │    ├── vision.ts    图片理解（GLM-4V，可被工具调用；区分"未配置"与"调用失败"）            │
 │    ├── safety.ts    输入归一化拦截 · 输出密钥遮蔽 · 免责声明 · 兜底话术                    │
 │    ├── api.ts       请求体上限 · IP 限流 · history 校验 · 断连取消上游请求                 │
@@ -52,7 +57,7 @@
 ```bash
 npm install     # 安装依赖
 npm run dev     # 开发模式（默认 http://localhost:5173）
-npm test        # 53 项单元测试
+npm test        # 66 项单元测试
 npm run lint    # ESLint（CI 门禁之一）
 npm run build   # 类型检查 + 生产构建（react / markdown 独立分包）
 npm run server  # 独立生产服务器（托管 dist/ + /api，端口 8787，自带 gzip）
@@ -72,6 +77,7 @@ npm run server  # 独立生产服务器（托管 dist/ + /api，端口 8787，�
 | `VISION_API_KEY` / `VISION_MODEL` | 否 | 图片理解（GLM-4V-Flash 有免费额度） |
 | `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | 否 | 配置后 RAG 自动升级为 BM25 + 向量混合检索 |
 | `WEATHER_MODE` | 否 | `auto`（默认，真实数据源 Open-Meteo）/ `real` / `mock` |
+| `MCP_SERVERS` / `MCP_SERVER_URL` | 否 | 声明标准 MCP Server（JSON 数组或单个 URL），工具会被动态发现 |
 | `PORT` / `MAX_BODY_BYTES` / `RATE_LIMIT_MAX` | 否 | 端口、请求体上限、限流阈值 |
 
 > ⚠️ **密钥安全**：API Key 只保存在 `.env`（已被 .gitignore / .dockerignore 排除），绝不提交到仓库或打入镜像；平台部署请使用平台的环境变量注入（运行时环境变量优先级高于 `.env`）。
@@ -84,14 +90,16 @@ npm run server  # 独立生产服务器（托管 dist/ + /api，端口 8787，�
 
 ```
 zhixing-agent/
-├── data/knowledge.json      # 传智杯全赛道备赛知识库（31 篇，RAG 数据源）
+├── data/knowledge.json      # 赛事备赛知识域（31 篇）
+├── data/knowledge-campus.json # 校园学习知识域（15 篇，演示"换语料即换场景"）
 ├── server/                  # Agent 服务端（Node）
 │   ├── agent.ts             # 编排器：理解→规划→行动→生成（计划/执行严格映射）
 │   ├── api.ts               # SSE 端点 + 健康检查 + 限流/体积/校验
 │   ├── main.ts              # 独立生产服务器（静态托管 + gzip + API）
 │   ├── llm.ts               # OpenAI 兼容客户端（超时/重试/降级/取消）
 │   ├── rag.ts               # 混合检索（BM25 + 可插拔向量 + 覆盖率相关度）
-│   ├── tools.ts             # 工具注册表（计算/时间/真实天气/图片理解）
+│   ├── tools.ts             # 工具注册表（计算/时间/真实天气/图片理解 + MCP 动态工具）
+│   ├── mcp.ts               # 标准 MCP 客户端（动态工具发现与调用）
 │   ├── vision.ts            # 图片理解通道
 │   ├── safety.ts            # 输入过滤 · 输出治理 · 免责声明
 │   ├── demo.ts              # 演示模式流水线
@@ -101,12 +109,14 @@ zhixing-agent/
 │   ├── App.tsx              # 布局、空状态、移动端抽屉
 │   ├── hooks/useAgentChat.ts# SSE 客户端 + 按帧节流 + 多会话持久化 + 重生成/反馈
 │   ├── components/          # Sidebar / MessageView / ChatInput
-│   └── utils/image.ts       # 图片压缩与 HEIC 转码
-├── tests/                   # Vitest 单元测试（53 项）
-├── docs/                    # 技术文档 PDF · 演示视频脚本 · 生成脚本
+│   ├── utils/image.ts       # 图片压缩与 HEIC 转码
+│   └── hooks/useSpeech.ts   # 语音输入与朗读（Web Speech API）
+├── tests/                   # Vitest 单元测试（66 项）
+├── docs/                    # 技术文档 DOCX/PDF（23 页）· 演示视频脚本 · 生成脚本
 ├── eslint.config.js         # ESLint 9 扁平配置
 ├── .prettierrc.json         # Prettier 配置
 ├── .github/workflows/ci.yml # CI：lint + typecheck + test + build
+├── .github/workflows/healthcheck.yml # 在线演示每 10 分钟探活（保活 + 异常留痕）
 ├── Dockerfile               # 生产镜像（密钥运行时注入）
 ├── DEPLOY.md                # 部署指南
 └── .env.example             # 环境变量模板（含全部可配置项）
@@ -117,9 +127,9 @@ zhixing-agent/
 | 材料 | 位置 | 状态 |
 |---|---|---|
 | 代码仓库（本仓库） | 公开 + README + 完整 Git 历史 | ✅ |
-| 技术文档（PDF，16 页） | [docs/知行Agent技术文档.pdf](docs/知行Agent技术文档.pdf) | ✅（团队信息页提交前填写） |
+| 技术文档（PDF，23 页） | [docs/知行Agent技术文档.pdf](docs/知行Agent技术文档.pdf)（源文件 [DOCX](docs/知行Agent技术文档.docx)） | ✅（团队信息页 9.3 提交前填写） |
 | 演示视频脚本（5-8 分钟） | [docs/演示视频脚本.md](docs/演示视频脚本.md) | ✅ 脚本就绪，按脚本录制 |
-| 在线演示（加分项） | **https://zhixing-agent-production.up.railway.app** | ✅ 已上线（Railway 托管，健康检查/问答/引用已实测） |
+| 在线演示（加分项） | **https://zhixing-agent-production.up.railway.app** | ✅ 已上线（Railway 托管；健康检查/问答/引用/真实天气/多模态已实测；由 healthcheck 工作流保活） |
 
 ## 🌍 社会价值与商业潜力
 
@@ -146,11 +156,11 @@ zhixing-agent/
 
 | 评分维度 | 权重 | 本作品落点 |
 |---|---|---|
-| AI技术深度 | 35% | LLM 集成（超时/重试/降级、Prompt 分档与语言约束、Function Calling）；Agent 规划-行动主循环（**计划与执行严格映射**、工具结果回填、图片理解作为工具参与协同）；RAG 混合检索与引用溯源（覆盖率可解释）；多模态（图片进入主循环）；AI 安全（输入归一化拦截 + 输出密钥遮蔽 + 免责声明 + 兜底）；工具集成（4 个真实工具，JSON Schema 契约） |
+| AI技术深度 | 35% | LLM 集成（超时/重试/降级、Prompt 分档与语言约束、Function Calling）；Agent 规划-行动主循环（**计划与执行严格映射**、工具结果回填、图片理解作为工具参与协同）；RAG **多知识域**混合检索与引用溯源（覆盖率可解释）；多模态（图片进入主循环）；AI 安全（输入归一化拦截 + 输出密钥遮蔽 + 免责声明 + 限流 + 兜底）；工具集成（4 个内置工具 + **标准 MCP 动态工具发现**） |
 | 创新性 | 25% | 「全过程透明可视化」Agent 交互范式、演示/真实双模式同构、工具结果驱动的生成式 UI |
-| 前端工程质量 | 10% | TypeScript 严格模式、组件化分层、共享事件协议、按帧节流渲染、代码分割、53 项测试 + ESLint + CI 门禁 |
-| 实用性 | 10% | 面向备赛学生的真实场景：赛事规则问答 + 真实天气/精确计算；答案有据可查、失败如实告知 |
-| 用户体验 | 10% | 流式渲染、思考状态可视化、复制/重生成/反馈、移动端抽屉、优雅错误兜底、多会话管理 |
+| 前端工程质量 | 10% | TypeScript 严格模式、组件化分层、共享事件协议、按帧节流渲染、代码分割、66 项测试 + ESLint + CI 门禁 |
+| 实用性 | 10% | 面向学生的真实场景：赛事备赛 + 校园学习双知识域 + 真实天气/精确计算；答案有据可查、失败如实告知 |
+| 用户体验 | 10% | 流式渲染、思考状态可视化、复制/重生成/朗读/反馈、移动端抽屉、优雅错误兜底、多会话管理 |
 | 社会价值与商业潜力 | 10% | 见上节「社会价值与商业潜力」 |
 
 ## 👥 团队信息（提交前务必填写）
@@ -167,8 +177,9 @@ zhixing-agent/
 ## 🗺️ 路线图
 
 - [ ] 知识库升级为向量入库（pgvector/Milvus），支持文档上传与自动分块
-- [ ] 接入标准 MCP Server（`@modelcontextprotocol/sdk`），实现工具动态发现
+- [x] 接入标准 MCP Server（initialize / tools/list / tools/call，动态工具发现）
+- [x] 语音交互：Web Speech API 语音输入与朗读
+- [x] 多知识域：同一套 Agent 挂载不同语料即换场景
 - [ ] 端侧智能：Transformers.js / WebGPU 浏览器端小模型推理
-- [ ] 语音交互：Web Speech API 语音输入与朗读
 - [ ] 生成式 UI 增强：工具结果渲染为可交互图表（ECharts）
 - [ ] Multi-Agent 编排：Planner / Executor / Reviewer 三角色协作
